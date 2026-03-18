@@ -1,5 +1,10 @@
 const mysql = require("mysql2/promise");
-require("dotenv").config(); // Load environment variables
+const fs = require("fs");
+const path = require("path");
+require("dotenv").config();
+
+// Build path to ca.pem in root folder
+const caPath = path.join(__dirname, "../ca.pem"); 
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -11,7 +16,8 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   ssl: {
-    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === "true",
+    ca: fs.readFileSync(caPath),
+    rejectUnauthorized: true,
   },
 });
 
