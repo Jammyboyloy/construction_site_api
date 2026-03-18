@@ -3,8 +3,8 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-// This checks if the file exists in the root directory first
-const caPath = path.join(process.cwd(), "ca.pem"); 
+// This looks for ca.pem in the root of your project
+const caPath = path.join(process.cwd(), "ca.pem");
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -16,7 +16,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   ssl: {
-    // Read the file from the path we defined
+    // Read the file from the path defined above
     ca: fs.readFileSync(caPath),
     rejectUnauthorized: true,
   },
