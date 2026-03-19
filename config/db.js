@@ -14,12 +14,11 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0,
-  ssl: {
-    // Read the file from the path defined above
-    ca: fs.readFileSync(caPath),
-    rejectUnauthorized: true,
-  },
+  // queueLimit: 0,
+  // ssl: {
+  //   ca: fs.readFileSync(caPath),
+  //   rejectUnauthorized: true,
+  // },
 });
 
 module.exports = pool;

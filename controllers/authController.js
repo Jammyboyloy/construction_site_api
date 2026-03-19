@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { secret } = require("../config/jwt");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -31,7 +32,7 @@ exports.login = async (req, res) => {
         id: user.id,
         role: user.role
       },
-      "SECRET_KEY",
+      secret,
       { expiresIn: "1d" }
     );
 
@@ -50,3 +51,4 @@ exports.login = async (req, res) => {
     res.status(500).json({ message: "Login error" });
   }
 };
+

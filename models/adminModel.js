@@ -29,8 +29,18 @@ const createSupervisor = async (userId, department) => {
   );
 };
 
+// 🔹 Create worker
+const createWorker = async (userId, skill_type, hired_date) => {
+  await db.query(
+    `INSERT INTO workers (user_id, skill_type, hired_date)
+     VALUES (?, ?, ?)`,
+    [userId, skill_type, hired_date]
+  );
+};
+
 module.exports = {
   checkEmail,
   createUser,
-  createSupervisor
+  createSupervisor,
+  createWorker
 };
