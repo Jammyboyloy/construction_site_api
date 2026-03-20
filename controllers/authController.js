@@ -52,3 +52,47 @@ exports.login = async (req, res) => {
   }
 };
 
+exports.getMe = async (req, res) => {
+  // console.log("USER:", req.user);
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.query(`
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.role,
+        u.status,
+        u.avatar,
+        u.created_at,
+
+        a.admin_level,
+        s.department,
+        w.skill_type,
+        c.company_name
+
+      FROM users u
+      LEFT JOIN admins a ON u.id = a.user_id
+      LEFT JOIN supervisors s ON u.id = s.user_id
+      LEFT JOIN workers w ON u.id = w.user_id
+      LEFT JOIN clients c ON u.id = c.user_id
+      WHERE u.id = ?
+    `, [userId]);
+
+    const user = rows[0];
+
+    return res.json({
+      message: "User profile fetched",
+      data: {
+        ...user,
+        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching profile" });
+  }
+};

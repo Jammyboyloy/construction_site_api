@@ -17,6 +17,9 @@ app.use("/auth", authRoutes);
 const adminRoutes = require("./routes/adminRoutes");
 app.use("/admin", adminRoutes);
 
+const userRoutes = require("./routes/userRoutes");
+app.use("/user", userRoutes);
+
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
