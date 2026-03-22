@@ -38,9 +38,20 @@ const createWorker = async (userId, skill_type, hired_date) => {
   );
 };
 
+const createClient = async (userId, company_name, contact_person, address) => {
+  const [result] = await db.query(
+    `INSERT INTO clients (user_id, company_name, contact_person, address)
+     VALUES (?, ?, ?, ?)`,
+    [userId, company_name, contact_person, address]
+  );
+
+  return result.insertId;
+};
+
 module.exports = {
   checkEmail,
   createUser,
   createSupervisor,
-  createWorker
+  createWorker,
+  createClient
 };

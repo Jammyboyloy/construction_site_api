@@ -6,6 +6,9 @@ const upload = require("../middlewares/uploadMiddleware");
 const {
   updateAvatar,
   resetAvatar,
+  getMyNotifications,
+  markAllNotificationsRead,
+  getUnreadCount
 } = require("../controllers/userController");
 
 // ✅ upload / update avatar
@@ -21,6 +24,24 @@ router.put(
   "/avatar/reset",
   verifyToken,
   resetAvatar
+);
+
+router.get(
+  "/notifications",
+  verifyToken,
+  getMyNotifications
+);
+
+router.put(
+  "/notifications/read-all",
+  verifyToken,
+  markAllNotificationsRead
+);
+
+router.get(
+  "/notifications/unread-count",
+  verifyToken,
+  getUnreadCount
 );
 
 module.exports = router;
