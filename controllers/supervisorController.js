@@ -1,0 +1,597 @@
+const db = require("../config/db");
+
+const getMyProjectsController = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [projects] = await db.query(
+      `SELECT 
+        p.id,
+        p.name,
+        p.location,
+        p.status,
+        p.start_date,
+        p.end_date
+      FROM project_supervisors ps
+      JOIN supervisors s ON ps.supervisor_id = s.id
+      JOIN projects p ON ps.project_id = p.id
+      WHERE s.user_id = ?`,
+      [userId],
+    );
+
+    res.json({
+      message: "My projects fetched successfully",
+      data: projects,
+    });
+  } catch (err) {
+    console.error("GET MY PROJECTS ERROR:", err);
+    res.status(500).json({
+      message: "Error fetching projects",
+    });
+  }
+};
+
+const createTasksController = async (req, res) => {
+  try {
+    const { project_id, tasks } = req.body;
+    const supervisorUserId = req.user.id;
+
+    if (!project_id || !tasks || tasks.length === 0) {
+      return res.status(400).json({
+        message: "Project ID and tasks are required",
+      });
+    }
+
+    const createdTasks = [];
+
+    // ✅ CREATE TASKS
+    for (let t of tasks) {
+      const [result] = await db.query(
+        `INSERT INTO tasks (project_id, title, description, deadline, assigned_by, status, progress_percentage)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          project_id,
+          t.title,
+          t.description || null,
+          t.deadline || null,
+          supervisorUserId,
+          "pending",
+          0,
+        ],
+      );
+
+      createdTasks.push({
+        id: result.insertId,
+        title: t.title,
+      });
+    }
+
+    // 🔥 MESSAGE
+    const message = `New tasks created for Project ID ${project_id}`;
+
+    // =========================
+    // 🔥 NOTIFY WORKERS (PROJECT)
+    // =========================
+    const [workers] = await db.query(
+      `
+      SELECT u.id
+      FROM project_workers pw
+      JOIN workers w ON pw.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      WHERE pw.project_id = ?
+    `,
+      [project_id],
+    );
+
+    const { io, users } = require("../server");
+
+    for (let w of workers) {
+      // save DB
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [w.id, message],
+      );
+
+      // realtime
+      if (users[w.id]) {
+        io.to(users[w.id]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // 🔥 NOTIFY CLIENT
+    // =========================
+    const [client] = await db.query(
+      `
+      SELECT u.id
+      FROM projects p
+      JOIN clients c ON p.client_id = c.id
+      JOIN users u ON c.user_id = u.id
+      WHERE p.id = ?
+    `,
+      [project_id],
+    );
+
+    if (client.length > 0) {
+      const clientId = client[0].id;
+
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [clientId, message],
+      );
+
+      if (users[clientId]) {
+        io.to(users[clientId]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // 🔥 NOTIFY ADMINS
+    // =========================
+    const [admins] = await db.query(
+      "SELECT id FROM users WHERE role = 'admin'",
+    );
+
+    for (let a of admins) {
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [a.id, message],
+      );
+
+      if (users[a.id]) {
+        io.to(users[a.id]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // ✅ RESPONSE
+    // =========================
+    res.json({
+      message: "Tasks created successfully",
+      data: createdTasks,
+    });
+  } catch (err) {
+    console.error("CREATE TASKS ERROR:", err);
+    res.status(500).json({
+      message: "Error creating tasks",
+    });
+  }
+};
+
+const assignWorkersToTaskController = async (req, res) => {
+  try {
+    const taskId = req.params.id;
+    const { worker_ids } = req.body;
+
+    if (!worker_ids || worker_ids.length === 0) {
+      return res.status(400).json({
+        message: "Worker IDs required",
+      });
+    }
+
+    const [task] = await db.query("SELECT * FROM tasks WHERE id = ?", [taskId]);
+
+    if (task.length === 0) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
+
+    const message = `You are assigned to task: ${task[0].title}`;
+
+    for (let worker_id of worker_ids) {
+      // prevent duplicate
+      const [exists] = await db.query(
+        "SELECT * FROM task_workers WHERE task_id = ? AND worker_id = ?",
+        [taskId, worker_id],
+      );
+
+      if (exists.length > 0) continue;
+
+      // assign
+      await db.query(
+        "INSERT INTO task_workers (task_id, worker_id) VALUES (?, ?)",
+        [taskId, worker_id],
+      );
+
+      // get user_id
+      const [w] = await db.query("SELECT user_id FROM workers WHERE id = ?", [
+        worker_id,
+      ]);
+
+      if (w.length > 0) {
+        const userId = w[0].user_id;
+
+        // save notification
+        await db.query(
+          "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+          [userId, message],
+        );
+
+        // realtime
+        try {
+          const { io, users } = require("../server");
+          if (users && users[userId]) {
+            io.to(users[userId]).emit("notification", { message });
+          }
+        } catch (e) {}
+      }
+    }
+
+    res.json({
+      message: "Workers assigned successfully",
+    });
+  } catch (err) {
+    console.error("ASSIGN WORKERS ERROR:", err);
+    res.status(500).json({
+      message: "Error assigning workers",
+    });
+  }
+};
+
+const getTasksByProjectController = async (req, res) => {
+  try {
+    const projectId = req.params.project_id;
+
+    // ✅ summary
+    const [[{ total_tasks }]] = await db.query(
+      "SELECT COUNT(*) as total_tasks FROM tasks WHERE project_id = ?",
+      [projectId],
+    );
+
+    const [[{ project_progress }]] = await db.query(
+      "SELECT AVG(progress_percentage) as project_progress FROM tasks WHERE project_id = ?",
+      [projectId],
+    );
+
+    const [tasks] = await db.query(
+      `
+      SELECT *
+      FROM tasks
+      WHERE project_id = ?
+      ORDER BY created_at DESC
+    `,
+      [projectId],
+    );
+
+    const result = [];
+
+    for (let t of tasks) {
+      const [workers] = await db.query(
+        `
+        SELECT 
+          w.id,
+          u.name,
+          u.email
+        FROM task_workers tw
+        JOIN workers w ON tw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE tw.task_id = ?
+      `,
+        [t.id],
+      );
+
+      result.push({
+        task_id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        progress: t.progress_percentage,
+        deadline: t.deadline,
+        total_workers: workers.length,
+        workers: workers,
+      });
+    }
+
+    res.json({
+      message: "Project tasks detail",
+      summary: {
+        total_tasks,
+        project_progress: Math.round(project_progress || 0),
+      },
+      tasks: result,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching tasks",
+    });
+  }
+};
+
+const getTaskReportsController = async (req, res) => {
+  try {
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    const [reports] = await db.query(`
+      SELECT tr.*, t.title
+      FROM task_reports tr
+      JOIN tasks t ON tr.task_id = t.id
+      ORDER BY tr.created_at DESC
+    `);
+
+    const result = [];
+
+    for (let r of reports) {
+      const [workers] = await db.query(`
+        SELECT u.name
+        FROM task_workers tw
+        JOIN workers w ON tw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE tw.task_id = ?
+      `, [r.task_id]);
+
+      result.push({
+        id: r.id,
+        task_id: r.task_id,
+        task_title: r.title,
+        team: workers.map(w => w.name),
+        image: r.image ? `${baseUrl}/uploads/reports/${r.image}` : null,
+        note: r.note,
+        status: r.status,
+        created_at: r.created_at
+      });
+    }
+
+    res.json({
+      message: "Reports fetched",
+      data: result
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching reports" });
+  }
+};
+
+const reviewTaskReportController = async (req, res) => {
+  try {
+    const reportId = req.params.id;
+    const { status, progress } = req.body;
+
+    // update report
+    await db.query(
+      "UPDATE task_reports SET status = ? WHERE id = ?",
+      [status, reportId]
+    );
+
+    // get task
+    const [[report]] = await db.query(
+      "SELECT task_id FROM task_reports WHERE id = ?",
+      [reportId]
+    );
+
+    const taskId = report.task_id;
+
+    // update task
+    let taskStatus = "pending";
+
+    if (progress > 0 && progress < 100) taskStatus = "in_progress";
+    if (progress === 100) taskStatus = "completed";
+
+    await db.query(
+      "UPDATE tasks SET progress_percentage = ?, status = ? WHERE id = ?",
+      [progress, taskStatus, taskId]
+    );
+
+    // 🔥 notify ALL workers
+    const [workers] = await db.query(`
+      SELECT u.id
+      FROM task_workers tw
+      JOIN workers w ON tw.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      WHERE tw.task_id = ?
+    `, [taskId]);
+
+    const { io, users } = require("../server");
+
+    const message =
+      status === "approved"
+        ? `Report approved (${progress}%)`
+        : "Report rejected";
+
+    for (let w of workers) {
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [w.id, message]
+      );
+
+      if (users[w.id]) {
+        io.to(users[w.id]).emit("notification", { message });
+      }
+    }
+
+    res.json({
+      message: "Report reviewed"
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error reviewing report" });
+  }
+};
+
+const createDailyReportController = async (req, res) => {
+  try {
+    const { project_id, summary, materials } = req.body;
+    const userId = req.user.id;
+
+    // get supervisor
+    const [s] = await db.query(
+      "SELECT id FROM supervisors WHERE user_id = ?",
+      [userId]
+    );
+
+    if (s.length === 0) {
+      return res.status(404).json({ message: "Supervisor not found" });
+    }
+
+    const supervisorId = s[0].id;
+
+    // 🔥 validate materials BEFORE insert report
+    if (materials && materials.length > 0) {
+      for (let m of materials) {
+
+        // check material exist
+        const [mat] = await db.query(
+          "SELECT * FROM materials WHERE id = ? AND project_id = ?",
+          [m.material_id, project_id]
+        );
+
+        if (mat.length === 0) {
+          return res.status(400).json({
+            message: `Material ID ${m.material_id} not found in this project`
+          });
+        }
+
+        // check quantity
+        if (mat[0].quantity < m.used_quantity) {
+          return res.status(400).json({
+            message: `Not enough stock for ${mat[0].name}`
+          });
+        }
+      }
+    }
+
+    // 🔥 auto progress
+    const [[{ project_progress }]] = await db.query(
+      "SELECT AVG(progress_percentage) as project_progress FROM tasks WHERE project_id = ?",
+      [project_id]
+    );
+
+    const finalProgress = Math.round(project_progress || 0);
+
+    // ✅ insert report
+    const [result] = await db.query(
+      `INSERT INTO daily_reports
+      (project_id, supervisor_id, report_date, summary, progress)
+      VALUES (?, ?, CURDATE(), ?, ?)`,
+      [project_id, supervisorId, summary, finalProgress]
+    );
+
+    const daily_report_id = result.insertId;
+
+    // 🔥 insert materials + UPDATE STOCK
+    if (materials && materials.length > 0) {
+      for (let m of materials) {
+
+        // insert usage
+        await db.query(
+          `INSERT INTO daily_materials
+          (daily_report_id, material_id, used_quantity, note)
+          VALUES (?, ?, ?, ?)`,
+          [
+            daily_report_id,
+            m.material_id,
+            m.used_quantity,
+            m.note || null
+          ]
+        );
+
+        // 🔥 reduce stock
+        await db.query(
+          `UPDATE materials
+           SET quantity = quantity - ?
+           WHERE id = ?`,
+          [m.used_quantity, m.material_id]
+        );
+      }
+    }
+
+    res.json({
+      message: "Daily report + materials created",
+      daily_report_id,
+      progress: finalProgress
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error creating report"
+    });
+  }
+};
+
+const getDailyReportsController = async (req, res) => {
+  try {
+    const projectId = req.params.project_id;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    const [reports] = await db.query(`
+      SELECT dr.*, u.name AS supervisor_name
+      FROM daily_reports dr
+      JOIN supervisors s ON dr.supervisor_id = s.id
+      JOIN users u ON s.user_id = u.id
+      WHERE dr.project_id = ?
+      ORDER BY dr.report_date DESC
+    `, [projectId]);
+
+    const result = [];
+
+    for (let r of reports) {
+
+      // 🔥 images
+      const [images] = await db.query(`
+        SELECT tr.image
+        FROM task_reports tr
+        JOIN tasks t ON tr.task_id = t.id
+        WHERE t.project_id = ?
+        AND DATE(tr.created_at) = ?
+        AND tr.status = 'approved'
+      `, [projectId, r.report_date]);
+
+      // 🔥 materials
+      const [materials] = await db.query(`
+        SELECT 
+          m.name,
+          dm.used_quantity,
+          dm.note
+        FROM daily_materials dm
+        JOIN materials m ON dm.material_id = m.id
+        WHERE dm.daily_report_id = ?
+      `, [r.id]);
+
+      result.push({
+        id: r.id,
+        project_id: r.project_id,
+        supervisor_name: r.supervisor_name,
+        report_date: r.report_date,
+        summary: r.summary,
+        progress: r.progress,
+
+        images: images.map(img =>
+          img.image
+            ? `${baseUrl}/uploads/reports/${img.image}`
+            : null
+        ),
+
+        materials: materials,
+
+        created_at: r.created_at
+      });
+    }
+
+    res.json({
+      message: "Daily reports fetched",
+      data: result
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching reports"
+    });
+  }
+};
+
+
+module.exports = {
+  getMyProjectsController,
+  createTasksController,
+  assignWorkersToTaskController,
+  getTasksByProjectController,
+  getTaskReportsController,
+  reviewTaskReportController,
+  createDailyReportController,
+  getDailyReportsController,
+};

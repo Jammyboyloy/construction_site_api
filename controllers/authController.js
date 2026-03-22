@@ -7,14 +7,31 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // check user
-    const [rows] = await db.query(
-      "SELECT * FROM users WHERE email = ?",
-      [email]
-    );
+    // 🔥 VALIDATE EMPTY
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password are required",
+      });
+    }
 
+    // 🔥 VALIDATE EMAIL FORMAT
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+
+    // check user
+    const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [
+      email,
+    ]);
+
+    // 🔥 DON'T reveal which is wrong (security)
     if (rows.length === 0) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({
+        message: "Invalid email or password",
+      });
     }
 
     const user = rows[0];
@@ -23,29 +40,31 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      return res.status(401).json({ message: "Wrong password" });
+      return res.status(401).json({
+        message: "Invalid email or password",
+      });
     }
 
     // create token
     const token = jwt.sign(
       {
         id: user.id,
-        role: user.role
+        role: user.role,
       },
       secret,
-      { expiresIn: "1d" }
+      { expiresIn: "1d" },
     );
 
-    res.json({
+    return res.json({
       message: "Login success",
-      token,
-      user: {
+      data: {
         id: user.id,
         name: user.name,
-        role: user.role
-      }
+        email: user.email,
+        role: user.role,
+      },
+      token,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Login error" });
@@ -57,7 +76,8 @@ exports.getMe = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const [rows] = await db.query(`
+    const [rows] = await db.query(
+      `
       SELECT 
         u.id,
         u.name,
@@ -79,7 +99,9 @@ exports.getMe = async (req, res) => {
       LEFT JOIN workers w ON u.id = w.user_id
       LEFT JOIN clients c ON u.id = c.user_id
       WHERE u.id = ?
-    `, [userId]);
+    `,
+      [userId],
+    );
 
     const user = rows[0];
 
@@ -87,10 +109,9 @@ exports.getMe = async (req, res) => {
       message: "User profile fetched",
       data: {
         ...user,
-        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`
-      }
+        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching profile" });
