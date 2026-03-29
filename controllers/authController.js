@@ -143,7 +143,7 @@ exports.getMe = async (req, res) => {
       message: "User profile fetched",
       data: {
         ...user,
-        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
       },
     });
   } catch (err) {

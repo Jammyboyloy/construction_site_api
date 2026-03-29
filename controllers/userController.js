@@ -20,7 +20,7 @@ const updateAvatar = async (req, res) => {
 
     return res.json({
       message: "Avatar updated",
-      avatar: `http://localhost:3000/uploads/avatars/${avatar}`,
+      avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${avatar}`,
     });
   } catch (err) {
     console.error(err);
@@ -61,7 +61,7 @@ const resetAvatar = async (req, res) => {
 
     return res.json({
       message: "Avatar reset to default",
-      avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
+      avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
     });
   } catch (err) {
     console.error(err);
