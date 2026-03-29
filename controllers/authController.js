@@ -22,12 +22,13 @@ exports.login = async (req, res) => {
       });
     }
 
-    // check user
-    const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [
-      email,
-    ]);
+    // 🔥 CHECK USER (ONLY ACTIVE)
+    const [rows] = await db.query(
+      "SELECT * FROM users WHERE email = ? AND status = 'active'",
+      [email],
+    );
 
-    // 🔥 DON'T reveal which is wrong (security)
+    // ❌ DO NOT reveal reason
     if (rows.length === 0) {
       return res.status(401).json({
         message: "Invalid email or password",
@@ -36,7 +37,13 @@ exports.login = async (req, res) => {
 
     const user = rows[0];
 
-    // compare password
+    if (user.status !== "active") {
+      return res.status(403).json({
+        message: "Your account has been deactivated.",
+      });
+    }
+
+    // 🔐 CHECK PASSWORD
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -45,7 +52,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // create token
+    // 🎫 CREATE TOKEN
     const token = jwt.sign(
       {
         id: user.id,
@@ -55,6 +62,7 @@ exports.login = async (req, res) => {
       { expiresIn: "1d" },
     );
 
+    // ✅ SUCCESS
     return res.json({
       message: "Login success",
       data: {
@@ -67,7 +75,33 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Login error" });
+    res.status(500).json({
+      message: "Login error",
+    });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    const token = req.headers["authorization"]?.split(" ")[1];
+
+    if (!token) {
+      return res.status(400).json({
+        message: "No token provided",
+      });
+    }
+
+    // save token to blacklist
+    await db.query("INSERT INTO token_blacklist (token) VALUES (?)", [token]);
+
+    res.json({
+      message: "Logout success",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Logout error",
+    });
   }
 };
 
