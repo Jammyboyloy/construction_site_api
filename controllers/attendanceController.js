@@ -43,9 +43,9 @@ const scanQRCheckInController = async (req, res) => {
     const { project_id, token } = req.body;
     const userId = req.user.id;
 
-    const { io, users } = require("../server");
+    const { io } = require("../server");
 
-    // ✅ 1. get worker
+    // ✅ get worker
     const [w] = await db.query(
       "SELECT id FROM workers WHERE user_id = ?",
       [userId]
@@ -57,24 +57,23 @@ const scanQRCheckInController = async (req, res) => {
 
     const workerId = w[0].id;
 
-    // ✅ 2. check today attendance
+    // ✅ check today
     const [exist] = await db.query(
-      `SELECT * FROM attendance 
-       WHERE worker_id = ? 
-       AND project_id = ? 
+      `SELECT * FROM attendance
+       WHERE worker_id = ?
+       AND project_id = ?
        AND date = CURDATE()`,
       [workerId, project_id]
     );
 
     // =========================
-    // 🟢 CHECK-IN (FIRST SCAN)
+    // 🟢 CHECK-IN
     // =========================
     if (exist.length === 0) {
-      // 🔥 validate QR ONLY for check-in
       const [qr] = await db.query(
-        `SELECT * FROM qr_tokens 
-         WHERE token = ? 
-         AND project_id = ? 
+        `SELECT * FROM qr_tokens
+         WHERE token = ?
+         AND project_id = ?
          AND expire_at > NOW()`,
         [token, project_id]
       );
@@ -83,23 +82,13 @@ const scanQRCheckInController = async (req, res) => {
         return res.status(400).json({ message: "Invalid or expired QR" });
       }
 
-      // insert attendance
       await db.query(
         `INSERT INTO attendance
-        (worker_id, project_id, date, working_hours, status, created_at)
+        (worker_id, project_id, date, working_hours, status, check_in)
         VALUES (?, ?, CURDATE(), 0, 'present', NOW())`,
         [workerId, project_id]
       );
 
-      // notification
-      const message = `Checked in successfully (Project ${project_id})`;
-
-      await db.query(
-        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-        [userId, message]
-      );
-
-      // realtime
       io.emit("attendance_update", {
         type: "checkin",
         worker_id: workerId,
@@ -110,32 +99,24 @@ const scanQRCheckInController = async (req, res) => {
     }
 
     // =========================
-    // 🔴 CHECK-OUT (SECOND SCAN)
+    // 🔴 CHECK-OUT
     // =========================
     const record = exist[0];
 
-    // prevent double checkout
     if (record.working_hours > 0) {
       return res.status(400).json({ message: "Already checked out" });
     }
 
-    // update working hours
+    // ✅ FIXED HERE 🔥
     await db.query(
       `UPDATE attendance
-       SET working_hours = TIMESTAMPDIFF(HOUR, created_at, NOW())
+       SET 
+         working_hours = TIMESTAMPDIFF(MINUTE, check_in, NOW()) / 60,
+         check_out = NOW()
        WHERE id = ?`,
       [record.id]
     );
 
-    // notification
-    const message = `Checked out successfully (Project ${project_id})`;
-
-    await db.query(
-      "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-      [userId, message]
-    );
-
-    // realtime
     io.emit("attendance_update", {
       type: "checkout",
       worker_id: workerId,
@@ -146,9 +127,7 @@ const scanQRCheckInController = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      message: "Error scanning QR"
-    });
+    res.status(500).json({ message: "Error scanning QR" });
   }
 };
 
@@ -157,17 +136,18 @@ const getTodayAttendanceController = async (req, res) => {
     const projectId = req.params.project_id;
 
     const [data] = await db.query(`
-      SELECT 
+      SELECT
         u.name,
         a.date,
         a.status,
-        a.created_at
+        a.check_in,
+        a.check_out
       FROM attendance a
       JOIN workers w ON a.worker_id = w.id
       JOIN users u ON w.user_id = u.id
       WHERE a.project_id = ?
       AND DATE(a.date) = CURDATE()
-      ORDER BY a.created_at DESC
+      ORDER BY a.check_in DESC
     `, [projectId]);
 
     res.json({
@@ -178,9 +158,7 @@ const getTodayAttendanceController = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      message: "Error fetching attendance"
-    });
+    res.status(500).json({ message: "Error fetching attendance" });
   }
 };
 
@@ -188,24 +166,23 @@ const getAttendanceHistoryController = async (req, res) => {
   try {
     const projectId = req.params.project_id;
 
-    // ✅ 1. daily records
     const [data] = await db.query(`
       SELECT
         u.name,
         a.date,
-        a.created_at AS check_in,
+        a.check_in,
+        a.check_out,
         a.working_hours,
         a.status
       FROM attendance a
       JOIN workers w ON a.worker_id = w.id
       JOIN users u ON w.user_id = u.id
       WHERE a.project_id = ?
-      ORDER BY a.date DESC, a.created_at DESC
+      ORDER BY a.date DESC, a.check_in DESC
     `, [projectId]);
 
-    // ✅ 2. total hours per worker
     const [totals] = await db.query(`
-      SELECT 
+      SELECT
         u.name,
         SUM(a.working_hours) AS total_hours
       FROM attendance a
@@ -225,9 +202,7 @@ const getAttendanceHistoryController = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      message: "Error fetching history"
-    });
+    res.status(500).json({ message: "Error fetching history" });
   }
 };
 

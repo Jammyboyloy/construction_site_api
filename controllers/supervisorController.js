@@ -169,7 +169,11 @@ const assignWorkersToTaskController = async (req, res) => {
       });
     }
 
-    const [task] = await db.query("SELECT * FROM tasks WHERE id = ?", [taskId]);
+    // ✅ check task exist
+    const [task] = await db.query(
+      "SELECT * FROM tasks WHERE id = ?",
+      [taskId]
+    );
 
     if (task.length === 0) {
       return res.status(404).json({
@@ -177,27 +181,49 @@ const assignWorkersToTaskController = async (req, res) => {
       });
     }
 
+    // 🔥 IMPORTANT: check workers belong to project
+    const [validWorkers] = await db.query(
+      `SELECT pw.worker_id
+       FROM project_workers pw
+       WHERE pw.project_id = ?
+       AND pw.worker_id IN (?)`,
+      [task[0].project_id, worker_ids]
+    );
+
+    const validIds = validWorkers.map(w => w.worker_id);
+
+    if (validIds.length !== worker_ids.length) {
+      return res.status(400).json({
+        message: "Some workers are not in this project",
+        invalid_workers: worker_ids.filter(id => !validIds.includes(id))
+      });
+    }
+
     const message = `You are assigned to task: ${task[0].title}`;
 
+    const { io, users } = require("../server");
+
     for (let worker_id of worker_ids) {
-      // prevent duplicate
+
+      // ✅ prevent duplicate
       const [exists] = await db.query(
         "SELECT * FROM task_workers WHERE task_id = ? AND worker_id = ?",
-        [taskId, worker_id],
+        [taskId, worker_id]
       );
 
       if (exists.length > 0) continue;
 
-      // assign
+      // ✅ assign
       await db.query(
         "INSERT INTO task_workers (task_id, worker_id) VALUES (?, ?)",
-        [taskId, worker_id],
+        [taskId, worker_id]
       );
 
-      // get user_id
-      const [w] = await db.query("SELECT user_id FROM workers WHERE id = ?", [
-        worker_id,
-      ]);
+      // ✅ get user_id
+      const [w] = await db.query(
+        "SELECT user_id FROM workers WHERE id = ?",
+        [worker_id]
+      );
 
       if (w.length > 0) {
         const userId = w[0].user_id;
@@ -205,26 +231,95 @@ const assignWorkersToTaskController = async (req, res) => {
         // save notification
         await db.query(
           "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-          [userId, message],
+          [userId, message]
         );
 
         // realtime
-        try {
-          const { io, users } = require("../server");
-          if (users && users[userId]) {
-            io.to(users[userId]).emit("notification", { message });
-          }
-        } catch (e) {}
+        if (users && users[userId]) {
+          io.to(users[userId]).emit("notification", { message });
+        }
       }
     }
 
     res.json({
       message: "Workers assigned successfully",
     });
+
   } catch (err) {
     console.error("ASSIGN WORKERS ERROR:", err);
     res.status(500).json({
       message: "Error assigning workers",
+    });
+  }
+};
+
+const removeWorkerFromTaskController = async (req, res) => {
+  try {
+    const taskId = req.params.id;
+    const { worker_id } = req.body;
+
+    // check task
+    const [task] = await db.query(
+      "SELECT * FROM tasks WHERE id = ?",
+      [taskId]
+    );
+
+    if (task.length === 0) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    // check exist
+    const [exists] = await db.query(
+      "SELECT * FROM task_workers WHERE task_id = ? AND worker_id = ?",
+      [taskId, worker_id]
+    );
+
+    if (exists.length === 0) {
+      return res.status(404).json({
+        message: "Worker not assigned to this task",
+      });
+    }
+
+    // ✅ remove
+    await db.query(
+      "DELETE FROM task_workers WHERE task_id = ? AND worker_id = ?",
+      [taskId, worker_id]
+    );
+
+    // get user_id
+    const [w] = await db.query(
+      "SELECT user_id FROM workers WHERE id = ?",
+      [worker_id]
+    );
+
+    if (w.length > 0) {
+      const userId = w[0].user_id;
+
+      const message = `You were removed from task: ${task[0].title}`;
+
+      // save notification
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [userId, message]
+      );
+
+      // realtime
+      try {
+        const { io, users } = require("../server");
+        if (users && users[userId]) {
+          io.to(users[userId]).emit("notification", { message });
+        }
+      } catch (e) {}
+    }
+
+    res.json({
+      message: "Worker removed from task",
+    });
+
+  } catch (err) {
+    console.error("REMOVE WORKER ERROR:", err);
+    res.status(500).json({
+      message: "Error removing worker",
     });
   }
 };
@@ -413,10 +508,12 @@ const reviewTaskReportController = async (req, res) => {
 
 const createDailyReportController = async (req, res) => {
   try {
-    const { project_id, summary, materials } = req.body;
+    const { project_id, summary, materials, expenses } = req.body; // ✅ add expenses
     const userId = req.user.id;
 
-    // get supervisor
+    const { io, users } = require("../server");
+
+    // ✅ get supervisor
     const [s] = await db.query(
       "SELECT id FROM supervisors WHERE user_id = ?",
       [userId]
@@ -428,11 +525,11 @@ const createDailyReportController = async (req, res) => {
 
     const supervisorId = s[0].id;
 
-    // 🔥 validate materials BEFORE insert report
+    // =========================
+    // 🔥 VALIDATE MATERIALS
+    // =========================
     if (materials && materials.length > 0) {
       for (let m of materials) {
-
-        // check material exist
         const [mat] = await db.query(
           "SELECT * FROM materials WHERE id = ? AND project_id = ?",
           [m.material_id, project_id]
@@ -440,11 +537,10 @@ const createDailyReportController = async (req, res) => {
 
         if (mat.length === 0) {
           return res.status(400).json({
-            message: `Material ID ${m.material_id} not found in this project`
+            message: `Material ID ${m.material_id} not found`
           });
         }
 
-        // check quantity
         if (mat[0].quantity < m.used_quantity) {
           return res.status(400).json({
             message: `Not enough stock for ${mat[0].name}`
@@ -453,7 +549,9 @@ const createDailyReportController = async (req, res) => {
       }
     }
 
-    // 🔥 auto progress
+    // =========================
+    // 🔥 AUTO PROGRESS
+    // =========================
     const [[{ project_progress }]] = await db.query(
       "SELECT AVG(progress_percentage) as project_progress FROM tasks WHERE project_id = ?",
       [project_id]
@@ -461,7 +559,9 @@ const createDailyReportController = async (req, res) => {
 
     const finalProgress = Math.round(project_progress || 0);
 
-    // ✅ insert report
+    // =========================
+    // ✅ INSERT REPORT
+    // =========================
     const [result] = await db.query(
       `INSERT INTO daily_reports
       (project_id, supervisor_id, report_date, summary, progress)
@@ -471,11 +571,11 @@ const createDailyReportController = async (req, res) => {
 
     const daily_report_id = result.insertId;
 
-    // 🔥 insert materials + UPDATE STOCK
+    // =========================
+    // 🔥 MATERIALS + STOCK
+    // =========================
     if (materials && materials.length > 0) {
       for (let m of materials) {
-
-        // insert usage
         await db.query(
           `INSERT INTO daily_materials
           (daily_report_id, material_id, used_quantity, note)
@@ -488,7 +588,6 @@ const createDailyReportController = async (req, res) => {
           ]
         );
 
-        // 🔥 reduce stock
         await db.query(
           `UPDATE materials
            SET quantity = quantity - ?
@@ -498,8 +597,85 @@ const createDailyReportController = async (req, res) => {
       }
     }
 
+    // =========================
+    // 🔥 NEW: EXPENSES INSERT
+    // =========================
+    if (expenses && expenses.length > 0) {
+      for (let e of expenses) {
+        await db.query(
+          `INSERT INTO expenses
+          (project_id, daily_report_id, created_by, type, amount, expense_date, description)
+          VALUES (?, ?, ?, ?, ?, CURDATE(), ?)`,
+          [
+            project_id,
+            daily_report_id,
+            userId,
+            e.type,
+            e.amount,
+            e.description || null
+          ]
+        );
+      }
+    }
+
+    // =========================
+    // 🔔 NOTIFY ADMIN
+    // =========================
+    const [admins] = await db.query(`
+      SELECT u.id AS user_id
+      FROM admins a
+      JOIN users u ON a.user_id = u.id
+    `);
+
+    for (let a of admins) {
+      const message = `📊 New daily report created for project ${project_id}`;
+
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [a.user_id, message]
+      );
+
+      if (users[a.user_id]) {
+        io.to(users[a.user_id]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // 🔔 NOTIFY CLIENT
+    // =========================
+    const [[project]] = await db.query(
+      "SELECT client_id FROM projects WHERE id = ?",
+      [project_id]
+    );
+
+    if (project && project.client_id) {
+      const [[clientUser]] = await db.query(
+        `SELECT u.id AS user_id
+         FROM clients c
+         JOIN users u ON c.user_id = u.id
+         WHERE c.id = ?`,
+        [project.client_id]
+      );
+
+      if (clientUser) {
+        const message = `📈 Project update: new daily report submitted`;
+
+        await db.query(
+          "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+          [clientUser.user_id, message]
+        );
+
+        if (users[clientUser.user_id]) {
+          io.to(users[clientUser.user_id]).emit("notification", { message });
+        }
+      }
+    }
+
+    // =========================
+    // ✅ RESPONSE
+    // =========================
     res.json({
-      message: "Daily report + materials created",
+      message: "Report created + materials + expenses saved",
       daily_report_id,
       progress: finalProgress
     });
@@ -530,7 +706,7 @@ const getDailyReportsController = async (req, res) => {
 
     for (let r of reports) {
 
-      // 🔥 images
+      // ✅ images
       const [images] = await db.query(`
         SELECT tr.image
         FROM task_reports tr
@@ -540,15 +716,25 @@ const getDailyReportsController = async (req, res) => {
         AND tr.status = 'approved'
       `, [projectId, r.report_date]);
 
-      // 🔥 materials
+      // ✅ materials
       const [materials] = await db.query(`
-        SELECT 
+        SELECT
           m.name,
           dm.used_quantity,
           dm.note
         FROM daily_materials dm
         JOIN materials m ON dm.material_id = m.id
         WHERE dm.daily_report_id = ?
+      `, [r.id]);
+
+      // ✅ NEW: expenses
+      const [expenses] = await db.query(`
+        SELECT
+          type,
+          amount,
+          description
+        FROM expenses
+        WHERE daily_report_id = ?
       `, [r.id]);
 
       result.push({
@@ -565,7 +751,8 @@ const getDailyReportsController = async (req, res) => {
             : null
         ),
 
-        materials: materials,
+        materials,
+        expenses, // ✅ include here
 
         created_at: r.created_at
       });
@@ -584,6 +771,37 @@ const getDailyReportsController = async (req, res) => {
   }
 };
 
+const getProjectWorkersController = async (req, res) => {
+  try {
+    const projectId = req.params.id;
+
+    const [workers] = await db.query(`
+      SELECT 
+        w.id AS worker_id,
+        u.name,
+        u.email,
+        w.skill_type,
+        w.rate_per_hour
+      FROM project_workers pw
+      JOIN workers w ON pw.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      WHERE pw.project_id = ?
+    `, [projectId]);
+
+    res.json({
+      message: "Project workers",
+      total: workers.length,
+      data: workers
+    });
+
+  } catch (err) {
+    console.error("GET PROJECT WORKERS ERROR:", err);
+    res.status(500).json({
+      message: "Error fetching workers"
+    });
+  }
+};
+
 
 module.exports = {
   getMyProjectsController,
@@ -594,4 +812,6 @@ module.exports = {
   reviewTaskReportController,
   createDailyReportController,
   getDailyReportsController,
+  removeWorkerFromTaskController,
+  getProjectWorkersController
 };

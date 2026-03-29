@@ -38,6 +38,9 @@ app.use("/api/projects", projectRoutes);
 const attendanceRoutes = require("./routes/attendanceRoutes");
 app.use("/api/attendance", attendanceRoutes);
 
+const payrollRoutes = require("./routes/payrollRoutes");
+app.use("/api/payroll", payrollRoutes);
+
 app.get("/", (req, res) => {
   res.send("API is running...");
 });

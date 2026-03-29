@@ -11,6 +11,8 @@ const {
   getTaskReportsController,
   getDailyReportsController,
   createDailyReportController,
+  removeWorkerFromTaskController,
+  getProjectWorkersController,
 } = require("../controllers/supervisorController");
 
 // middleware
@@ -22,41 +24,41 @@ router.get(
   "/my-projects",
   verifyToken,
   checkRole("supervisor"),
-  getMyProjectsController
+  getMyProjectsController,
 );
 
 router.post(
   "/tasks",
   verifyToken,
   checkRole("supervisor"),
-  createTasksController
+  createTasksController,
 );
 
 router.post(
   "/task/:id/assign-workers",
   verifyToken,
   checkRole("supervisor"),
-  assignWorkersToTaskController
+  assignWorkersToTaskController,
 );
 
 router.get(
   "/project/:project_id/tasks",
   verifyToken,
-  getTasksByProjectController
+  getTasksByProjectController,
 );
 
 router.get(
   "/task-reports",
   verifyToken,
   checkRole("supervisor"),
-  getTaskReportsController
+  getTaskReportsController,
 );
 
 router.put(
   "/task-report/:id",
   verifyToken,
   checkRole("supervisor"),
-  reviewTaskReportController
+  reviewTaskReportController,
 );
 
 // supervisor
@@ -64,15 +66,28 @@ router.post(
   "/daily-report",
   verifyToken,
   checkRole("supervisor"),
-  createDailyReportController
+  createDailyReportController,
 );
 
 // admin/client
 router.get(
   "/daily-reports/:project_id",
   verifyToken,
-  getDailyReportsController
+  getDailyReportsController,
 );
 
+router.delete(
+  "/tasks/:id/remove-worker",
+  verifyToken,
+  checkRole("supervisor"),
+  removeWorkerFromTaskController,
+);
+
+router.get(
+  "/projects/:id/workers",
+  verifyToken,
+  checkRole("supervisor"),
+  getProjectWorkersController,
+);
 
 module.exports = router;

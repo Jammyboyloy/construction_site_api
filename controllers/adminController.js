@@ -5,7 +5,7 @@ const {
   createSupervisor,
   checkEmail,
   createWorker,
-  createClient
+  createClient,
 } = require("../models/adminModel");
 
 const createSupervisorAccount = async (req, res) => {
@@ -43,14 +43,13 @@ const createSupervisorAccount = async (req, res) => {
         email: email,
         phone: phone,
         department: department,
-      }
+      },
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating supervisor" });
   }
 };
-
 
 const getAllSupervisors = async (req, res) => {
   try {
@@ -122,8 +121,8 @@ const createWorkerAccount = async (req, res) => {
         avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
         phone: phone,
         skill_type: skill_type,
-        hired_date: hired_date
-      }
+        hired_date: hired_date,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -173,7 +172,7 @@ const createClientAccount = async (req, res) => {
       phone,
       company_name,
       contact_person,
-      address
+      address,
     } = req.body;
 
     if (!name || !email || !password || !company_name) {
@@ -192,14 +191,14 @@ const createClientAccount = async (req, res) => {
       email,
       hashedPassword,
       phone || null,
-      "client"
+      "client",
     );
 
     await createClient(
       userId,
       company_name,
       contact_person || name,
-      address || null
+      address || null,
     );
 
     return res.json({
@@ -213,9 +212,8 @@ const createClientAccount = async (req, res) => {
         company_name,
         contact_person: contact_person || name,
         address,
-      }
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating client" });
@@ -248,7 +246,6 @@ const getAllClients = async (req, res) => {
         avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
       })),
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -257,7 +254,11 @@ const getAllClients = async (req, res) => {
   }
 };
 
-const { createProject, getAllProjects, updateProject } = require("../models/projectModel");
+const {
+  createProject,
+  getAllProjects,
+  updateProject,
+} = require("../models/projectModel");
 
 const createProjectController = async (req, res) => {
   try {
@@ -267,12 +268,12 @@ const createProjectController = async (req, res) => {
       client_id,
       start_date,
       end_date,
-      estimated_budget
+      estimated_budget,
     } = req.body;
 
     if (!name || !client_id) {
       return res.status(400).json({
-        message: "Missing required fields"
+        message: "Missing required fields",
       });
     }
 
@@ -285,7 +286,7 @@ const createProjectController = async (req, res) => {
       created_by,
       start_date || null,
       end_date || null,
-      estimated_budget || 0
+      estimated_budget || 0,
     );
 
     return res.json({
@@ -296,14 +297,13 @@ const createProjectController = async (req, res) => {
         location,
         client_id,
         status: "planning",
-        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`
-      }
+        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error creating project"
+      message: "Error creating project",
     });
   }
 };
@@ -314,29 +314,28 @@ const updateProjectThumbnail = async (req, res) => {
 
     if (!req.file) {
       return res.status(400).json({
-        message: "No file uploaded"
+        message: "No file uploaded",
       });
     }
 
     const filename = req.file.filename;
 
-    await db.query(
-      "UPDATE projects SET thumbnail = ? WHERE id = ?",
-      [filename, projectId]
-    );
+    await db.query("UPDATE projects SET thumbnail = ? WHERE id = ?", [
+      filename,
+      projectId,
+    ]);
 
     return res.json({
       message: "Thumbnail updated successfully",
       data: {
         project_id: projectId,
-        thumbnail: `http://localhost:3000/uploads/projects/${filename}`
-      }
+        thumbnail: `http://localhost:3000/uploads/projects/${filename}`,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error updating thumbnail"
+      message: "Error updating thumbnail",
     });
   }
 };
@@ -348,33 +347,32 @@ const resetProjectThumbnail = async (req, res) => {
     // optional: get old thumbnail (to delete later if you want)
     const [rows] = await db.query(
       "SELECT thumbnail FROM projects WHERE id = ?",
-      [projectId]
+      [projectId],
     );
 
     if (rows.length === 0) {
       return res.status(404).json({
-        message: "Project not found"
+        message: "Project not found",
       });
     }
 
     // set back to default
     await db.query(
       "UPDATE projects SET thumbnail = 'default-project.png' WHERE id = ?",
-      [projectId]
+      [projectId],
     );
 
     return res.json({
       message: "Thumbnail reset to default",
       data: {
         project_id: projectId,
-        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`
-      }
+        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error resetting thumbnail"
+      message: "Error resetting thumbnail",
     });
   }
 };
@@ -389,7 +387,7 @@ const getAllProjectsController = async (req, res) => {
         ? {
             name: p.supervisor_name,
             email: p.supervisor_email,
-            assigned_at: p.supervisor_assigned_at
+            assigned_at: p.supervisor_assigned_at,
           }
         : null;
 
@@ -398,7 +396,8 @@ const getAllProjectsController = async (req, res) => {
       delete p.supervisor_assigned_at;
 
       // get workers
-      const [workers] = await db.query(`
+      const [workers] = await db.query(
+        `
         SELECT 
           w.id,
           u.name,
@@ -408,23 +407,24 @@ const getAllProjectsController = async (req, res) => {
         JOIN workers w ON pw.worker_id = w.id
         JOIN users u ON w.user_id = u.id
         WHERE pw.project_id = ?
-      `, [p.project_id]);
+      `,
+        [p.project_id],
+      );
 
       p.workers = workers;
-      p.worker_count = workers.length
+      p.worker_count = workers.length;
 
       p.thumbnail = `http://localhost:3000/uploads/projects/${p.thumbnail}`;
     }
 
     res.json({
       message: "Projects fetched successfully",
-      data: projects
+      data: projects,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error fetching projects"
+      message: "Error fetching projects",
     });
   }
 };
@@ -440,7 +440,7 @@ const updateProjectController = async (req, res) => {
       start_date,
       end_date,
       estimated_budget,
-      status
+      status,
     } = req.body;
 
     await updateProject(
@@ -451,7 +451,7 @@ const updateProjectController = async (req, res) => {
       start_date,
       end_date,
       estimated_budget,
-      status
+      status,
     );
 
     return res.json({
@@ -461,14 +461,13 @@ const updateProjectController = async (req, res) => {
         name,
         location,
         client_id,
-        status
-      }
+        status,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error updating project"
+      message: "Error updating project",
     });
   }
 };
@@ -489,9 +488,8 @@ const getAvailableSupervisors = async (req, res) => {
 
     res.json({
       message: "Available supervisors",
-      data: rows
+      data: rows,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching supervisors" });
@@ -505,56 +503,59 @@ const assignSupervisorController = async (req, res) => {
 
     if (!supervisor_id) {
       return res.status(400).json({
-        message: "Supervisor ID is required"
+        message: "Supervisor ID is required",
       });
     }
 
     // ✅ check supervisor exists
     const [sup] = await db.query(
       "SELECT user_id FROM supervisors WHERE id = ?",
-      [supervisor_id]
+      [supervisor_id],
     );
 
     if (sup.length === 0) {
       return res.status(404).json({
-        message: "Supervisor not found"
+        message: "Supervisor not found",
       });
     }
 
     const userId = sup[0].user_id;
 
     // ✅ check busy (UPDATED)
-    const [busy] = await db.query(`
+    const [busy] = await db.query(
+      `
       SELECT ps.id
       FROM project_supervisors ps
       JOIN projects p ON ps.project_id = p.id
       WHERE ps.supervisor_id = ?
       AND p.status != 'completed'
-    `, [supervisor_id]);
+    `,
+      [supervisor_id],
+    );
 
     if (busy.length > 0) {
       return res.status(400).json({
-        message: "Supervisor already has active project"
+        message: "Supervisor already has active project",
       });
     }
 
     // ✅ check already assigned to this project
     const [exist] = await db.query(
       "SELECT * FROM project_supervisors WHERE project_id = ?",
-      [projectId]
+      [projectId],
     );
 
     if (exist.length > 0) {
       // 🔥 UPDATE (change supervisor)
       await db.query(
         "UPDATE project_supervisors SET supervisor_id = ? WHERE project_id = ?",
-        [supervisor_id, projectId]
+        [supervisor_id, projectId],
       );
     } else {
       // 🔥 INSERT (first assign)
       await db.query(
         "INSERT INTO project_supervisors (project_id, supervisor_id) VALUES (?, ?)",
-        [projectId, supervisor_id]
+        [projectId, supervisor_id],
       );
     }
 
@@ -563,7 +564,7 @@ const assignSupervisorController = async (req, res) => {
     // ✅ save notification
     await db.query(
       "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-      [userId, message]
+      [userId, message],
     );
 
     // ✅ socket safe
@@ -576,13 +577,12 @@ const assignSupervisorController = async (req, res) => {
     } catch (e) {}
 
     res.json({
-      message: "Supervisor assigned successfully"
+      message: "Supervisor assigned successfully",
     });
-
   } catch (err) {
     console.error("ASSIGN ERROR:", err);
     res.status(500).json({
-      message: "Error assigning supervisor"
+      message: "Error assigning supervisor",
     });
   }
 };
@@ -590,7 +590,7 @@ const assignSupervisorController = async (req, res) => {
 const getAvailableWorkers = async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT w.id, u.name, u.email
+      SELECT w.id, u.name, u.email , w.skill_type
       FROM workers w
       JOIN users u ON w.user_id = u.id
       WHERE w.id NOT IN (
@@ -603,13 +603,12 @@ const getAvailableWorkers = async (req, res) => {
 
     res.json({
       message: "Available workers",
-      data: rows
+      data: rows,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error fetching workers"
+      message: "Error fetching workers",
     });
   }
 };
@@ -621,7 +620,7 @@ const assignWorkersController = async (req, res) => {
 
     if (!worker_ids || worker_ids.length === 0) {
       return res.status(400).json({
-        message: "Worker IDs required"
+        message: "Worker IDs required",
       });
     }
 
@@ -630,13 +629,13 @@ const assignWorkersController = async (req, res) => {
       `SELECT worker_id FROM project_workers 
        WHERE project_id = ? 
        AND worker_id IN (?)`,
-      [projectId, worker_ids]
+      [projectId, worker_ids],
     );
 
     if (existing.length > 0) {
       return res.status(400).json({
         message: "Some workers already assigned",
-        duplicate_workers: existing.map(e => e.worker_id)
+        duplicate_workers: existing.map((e) => e.worker_id),
       });
     }
 
@@ -644,13 +643,12 @@ const assignWorkersController = async (req, res) => {
     for (let worker_id of worker_ids) {
       await db.query(
         "INSERT INTO project_workers (project_id, worker_id) VALUES (?, ?)",
-        [projectId, worker_id]
+        [projectId, worker_id],
       );
 
-      const [w] = await db.query(
-        "SELECT user_id FROM workers WHERE id = ?",
-        [worker_id]
-      );
+      const [w] = await db.query("SELECT user_id FROM workers WHERE id = ?", [
+        worker_id,
+      ]);
 
       if (w.length > 0) {
         const userId = w[0].user_id;
@@ -658,19 +656,18 @@ const assignWorkersController = async (req, res) => {
 
         await db.query(
           "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-          [userId, message]
+          [userId, message],
         );
       }
     }
 
     res.json({
-      message: "Workers assigned successfully"
+      message: "Workers assigned successfully",
     });
-
   } catch (err) {
     console.error("ASSIGN WORKERS ERROR:", err);
     res.status(500).json({
-      message: "Error assigning workers"
+      message: "Error assigning workers",
     });
   }
 };
@@ -682,36 +679,35 @@ const removeWorkerFromProject = async (req, res) => {
 
     if (!worker_id) {
       return res.status(400).json({
-        message: "Worker ID is required"
+        message: "Worker ID is required",
       });
     }
 
     // 🔥 check if exists
     const [exist] = await db.query(
       "SELECT * FROM project_workers WHERE project_id = ? AND worker_id = ?",
-      [projectId, worker_id]
+      [projectId, worker_id],
     );
 
     if (exist.length === 0) {
       return res.status(404).json({
-        message: "Worker not assigned to this project"
+        message: "Worker not assigned to this project",
       });
     }
 
     // ✅ remove
     await db.query(
       "DELETE FROM project_workers WHERE project_id = ? AND worker_id = ?",
-      [projectId, worker_id]
+      [projectId, worker_id],
     );
 
     res.json({
-      message: "Worker removed from project successfully"
+      message: "Worker removed from project successfully",
     });
-
   } catch (err) {
     console.error("REMOVE WORKER ERROR:", err);
     res.status(500).json({
-      message: "Error removing worker"
+      message: "Error removing worker",
     });
   }
 };
@@ -723,25 +719,24 @@ const updateUserPassword = async (req, res) => {
 
     if (!password) {
       return res.status(400).json({
-        message: "Password is required"
+        message: "Password is required",
       });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    await db.query(
-      "UPDATE users SET password = ? WHERE id = ?",
-      [hashedPassword, userId]
-    );
+    await db.query("UPDATE users SET password = ? WHERE id = ?", [
+      hashedPassword,
+      userId,
+    ]);
 
     res.json({
-      message: "Password updated successfully"
+      message: "Password updated successfully",
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error updating password"
+      message: "Error updating password",
     });
   }
 };
@@ -749,93 +744,138 @@ const updateUserPassword = async (req, res) => {
 const updateUserController = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { name, email, phone, department } = req.body;
 
-    // 🔥 check user exists
-    const [user] = await db.query(
-      "SELECT * FROM users WHERE id = ?",
-      [userId]
-    );
+    const {
+      name,
+      phone,
+      department,
+      skill_type,
+      company_name,
+      contact_person,
+      address,
+      hired_date,
+    } = req.body;
+
+    // 🔥 check user
+    const [user] = await db.query("SELECT * FROM users WHERE id = ?", [userId]);
 
     if (user.length === 0) {
       return res.status(404).json({
-        message: "User not found"
+        success: false,
+        message: "User not found",
       });
     }
 
-    // ✅ update users table
-    await db.query(
-      "UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?",
-      [name, email, phone, userId]
-    );
+    if (user[0].role === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot update admin",
+      });
+    }
 
-    // 🔥 if supervisor → update department
-    if (user[0].role === "supervisor") {
+    const role = user[0].role;
+
+    // ✅ update ONLY allowed fields (NO email, NO password)
+    await db.query("UPDATE users SET name = ?, phone = ? WHERE id = ?", [
+      name,
+      phone,
+      userId,
+    ]);
+
+    // 🔥 supervisor
+    if (role === "supervisor") {
       await db.query(
-        "UPDATE supervisors SET department = ? WHERE user_id = ?",
-        [department, userId]
+        `UPDATE supervisors 
+         SET department = ?, hired_date = ?
+         WHERE user_id = ?`,
+        [department || null, hired_date || null, userId],
+      );
+    }
+
+    // 🔥 worker
+    if (role === "worker") {
+      await db.query(
+        `UPDATE workers 
+         SET skill_type = ?, hired_date = ?
+         WHERE user_id = ?`,
+        [skill_type || null, hired_date || null, userId],
+      );
+    }
+
+    // 🔥 client
+    if (role === "client") {
+      await db.query(
+        `UPDATE clients 
+         SET company_name = ?, contact_person = ?, address = ?
+         WHERE user_id = ?`,
+        [company_name || null, contact_person || null, address || null, userId],
       );
     }
 
     res.json({
-      message: "User updated successfully"
+      success: true,
+      message: "User updated successfully",
+      data: {
+        id: userId,
+        role,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error updating user"
+      success: false,
+      message: "Error updating user",
     });
   }
 };
 
-const deleteUserController = async (req, res) => {
+const updateUserStatusController = async (req, res) => {
   try {
     const userId = req.params.id;
 
-    // 🔥 check user
     const [user] = await db.query(
-      "SELECT role FROM users WHERE id = ?",
-      [userId]
+      "SELECT id, name, email, role, status FROM users WHERE id = ?",
+      [userId],
     );
 
     if (user.length === 0) {
       return res.status(404).json({
-        message: "User not found"
+        success: false,
+        message: "User not found",
       });
     }
 
-    // ❌ block admin delete
     if (user[0].role === "admin") {
       return res.status(403).json({
-        message: "Cannot delete admin"
+        success: false,
+        message: "Cannot change admin status",
       });
     }
 
-    // ✅ delete related tables first
-    if (user[0].role === "supervisor") {
-      await db.query("DELETE FROM supervisors WHERE user_id = ?", [userId]);
-    }
+    // 🔥 TOGGLE STATUS
+    const newStatus = user[0].status === "active" ? "inactive" : "active";
 
-    if (user[0].role === "worker") {
-      await db.query("DELETE FROM workers WHERE user_id = ?", [userId]);
-    }
-
-    if (user[0].role === "client") {
-      await db.query("DELETE FROM clients WHERE user_id = ?", [userId]);
-    }
-
-    // ✅ delete user
-    await db.query("DELETE FROM users WHERE id = ?", [userId]);
+    await db.query("UPDATE users SET status = ? WHERE id = ?", [
+      newStatus,
+      userId,
+    ]);
 
     res.json({
-      message: "User deleted successfully"
+      success: true,
+      message: `User ${newStatus === "active" ? "activated" : "deactivated"}`,
+      data: {
+        id: user[0].id,
+        name: user[0].name,
+        email: user[0].email,
+        role: user[0].role,
+        status: newStatus,
+      },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error deleting user"
+      success: false,
+      message: "Error updating user status",
     });
   }
 };
@@ -848,7 +888,7 @@ module.exports = {
   createClientAccount,
   getAllClients,
   createProjectController,
-  updateProjectThumbnail, 
+  updateProjectThumbnail,
   resetProjectThumbnail,
   getAllProjectsController,
   updateProjectController,
@@ -859,5 +899,5 @@ module.exports = {
   removeWorkerFromProject,
   updateUserPassword,
   updateUserController,
-  deleteUserController
+  updateUserStatusController,
 };

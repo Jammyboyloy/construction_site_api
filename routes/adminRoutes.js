@@ -19,7 +19,7 @@ const {
   assignWorkersController,
   updateUserController,
   updateUserPassword,
-  deleteUserController,
+  updateUserStatusController,
   removeWorkerFromProject
 } = require("../controllers/adminController");
 const { verifyToken } = require("../middlewares/authMiddleware");
@@ -138,11 +138,11 @@ router.put(
   updateUserPassword
 );
 
-router.delete(
-  "/user/:id",
+router.put(
+  "/status/user/:id",
   verifyToken,
   checkRole("admin"),
-  deleteUserController
+  updateUserStatusController
 );
 
 module.exports = router;
