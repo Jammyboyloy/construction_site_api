@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const http = require("http");
+const pool = require("./config/db");
 const { Server } = require("socket.io");
 
 const app = express();
@@ -12,6 +13,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // middleware
 app.use(express.json());
 app.use(cors());
+const startCronJobs = require("./utils/cron");
 
 // routes
 const authRoutes = require("./routes/authRoutes");
@@ -45,11 +47,10 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-
 // 🔥 SOCKET.IO SETUP
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
 });
 
 // store online users
@@ -75,24 +76,25 @@ io.on("connection", (socket) => {
 // export for controller use
 module.exports = { io, users };
 
+startCronJobs();
 
 // ❗ CHANGE THIS (IMPORTANT)
-server.listen(3000, () => {
-  console.log("Server Running on port 3000");
-});
+// server.listen(3000, () => {
+//   console.log("Server Running on port 3000");
+// });
 
 // start server
-// const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-// app.listen(PORT, async () => {
-//   console.log(`Server running on port ${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
 
-//   try {
-//     const [rows] = await pool.query("SELECT 1");
-//     console.log("Database connected successfully!");
-//     console.log("Test result:", rows);
-//   } catch (error) {
-//     console.log("Database connection failed!");
-//     console.log(error);
-//   }
-// });
+  try {
+    const [rows] = await pool.query("SELECT 1");
+    console.log("Database connected successfully!");
+    console.log("Test result:", rows);
+  } catch (error) {
+    console.log("Database connection failed!");
+    console.log(error);
+  }
+});
