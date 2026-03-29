@@ -39,7 +39,7 @@ const createSupervisorAccount = async (req, res) => {
       data: {
         user_id: userId,
         name: name,
-        avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
         email: email,
         phone: phone,
         department: department,
@@ -73,7 +73,7 @@ const getAllSupervisors = async (req, res) => {
       message: "Supervisors fetched successfully",
       data: rows.map((user) => ({
         ...user,
-        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
       })),
     });
   } catch (error) {
@@ -118,7 +118,7 @@ const createWorkerAccount = async (req, res) => {
         user_id: userId,
         name: name,
         email: email,
-        avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
         phone: phone,
         skill_type: skill_type,
         hired_date: hired_date,
@@ -152,7 +152,7 @@ const getAllWorkers = async (req, res) => {
       message: "Workers fetched successfully",
       data: rows.map((user) => ({
         ...user,
-        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
       })),
     });
   } catch (error) {
@@ -207,7 +207,7 @@ const createClientAccount = async (req, res) => {
         user_id: userId,
         name,
         email,
-        avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
         phone,
         company_name,
         contact_person: contact_person || name,
@@ -243,7 +243,7 @@ const getAllClients = async (req, res) => {
       message: "Clients fetched successfully",
       data: rows.map((user) => ({
         ...user,
-        avatar: `http://localhost:3000/uploads/avatars/${user.avatar}`,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
       })),
     });
   } catch (error) {
@@ -297,7 +297,7 @@ const createProjectController = async (req, res) => {
         location,
         client_id,
         status: "planning",
-        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
+        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/default-project.png`,
       },
     });
   } catch (err) {
@@ -329,7 +329,7 @@ const updateProjectThumbnail = async (req, res) => {
       message: "Thumbnail updated successfully",
       data: {
         project_id: projectId,
-        thumbnail: `http://localhost:3000/uploads/projects/${filename}`,
+        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/${filename}`,
       },
     });
   } catch (err) {
@@ -366,7 +366,7 @@ const resetProjectThumbnail = async (req, res) => {
       message: "Thumbnail reset to default",
       data: {
         project_id: projectId,
-        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
+        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/default-project.png`,
       },
     });
   } catch (err) {
@@ -414,7 +414,7 @@ const getAllProjectsController = async (req, res) => {
       p.workers = workers;
       p.worker_count = workers.length;
 
-      p.thumbnail = `http://localhost:3000/uploads/projects/${p.thumbnail}`;
+      p.thumbnail = `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`;
     }
 
     res.json({
