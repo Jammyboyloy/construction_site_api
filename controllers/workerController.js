@@ -45,25 +45,83 @@ const getMyProjectsController = async (req, res) => {
     const [projects] = await db.query(
       `
       SELECT
-        p.id,
-        p.name,
-        p.location,
-        p.status,
-        p.start_date,
-        p.end_date
+        p.*,
+
+        -- 👤 creator
+        MAX(cu.name) AS created_by_name,
+
+        -- 🏢 client
+        MAX(c.id) AS client_id,
+        MAX(cu2.name) AS client_name,
+
+        -- 👷 supervisor
+        MAX(su.name) AS supervisor_name,
+        MAX(su.email) AS supervisor_email,
+        MAX(ps.assigned_at) AS supervisor_assigned_at
+
       FROM project_workers pw
       JOIN workers w ON pw.worker_id = w.id
       JOIN users u ON w.user_id = u.id
       JOIN projects p ON pw.project_id = p.id
+
+      LEFT JOIN users cu ON p.created_by = cu.id
+
+      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN users cu2 ON c.user_id = cu2.id
+
+      LEFT JOIN project_supervisors ps ON ps.project_id = p.id
+      LEFT JOIN supervisors s ON ps.supervisor_id = s.id
+      LEFT JOIN users su ON s.user_id = su.id
+
       WHERE u.id = ?
-    `,
-      [userId],
+      GROUP BY p.id
+      `,
+      [userId]
     );
+
+    const result = projects.map(p => {
+      // ✅ creator
+      const created_by = p.created_by
+        ? { id: p.created_by, name: p.created_by_name }
+        : null;
+
+      // ✅ client
+      const client = p.client_id
+        ? { id: p.client_id, name: p.client_name }
+        : null;
+
+      // ✅ supervisor
+      const supervisor = p.supervisor_name
+        ? {
+            name: p.supervisor_name,
+            email: p.supervisor_email,
+            assigned_at: p.supervisor_assigned_at,
+          }
+        : null;
+
+      return {
+        id: p.id,
+        name: p.name,
+        location: p.location,
+        status: p.status,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        estimated_budget: p.estimated_budget,
+
+        created_by,
+        client,
+        supervisor,
+
+        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`,
+        created_at: p.created_at
+      };
+    });
 
     res.json({
       message: "My projects fetched",
-      data: projects,
+      data: result,
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({

@@ -7,14 +7,12 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 🔥 VALIDATE EMPTY
     if (!email || !password) {
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
-    // 🔥 VALIDATE EMAIL FORMAT
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -22,13 +20,11 @@ exports.login = async (req, res) => {
       });
     }
 
-    // 🔥 CHECK USER (ONLY ACTIVE)
     const [rows] = await db.query(
       "SELECT * FROM users WHERE email = ? AND status = 'active'",
-      [email],
+      [email]
     );
 
-    // ❌ DO NOT reveal reason
     if (rows.length === 0) {
       return res.status(401).json({
         message: "Invalid email or password",
@@ -37,13 +33,6 @@ exports.login = async (req, res) => {
 
     const user = rows[0];
 
-    if (user.status !== "active") {
-      return res.status(403).json({
-        message: "Your account has been deactivated.",
-      });
-    }
-
-    // 🔐 CHECK PASSWORD
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -52,17 +41,39 @@ exports.login = async (req, res) => {
       });
     }
 
-    // 🎫 CREATE TOKEN
+    // 🚫 worker check
+    if (user.role === "worker") {
+      const [[worker]] = await db.query(
+        "SELECT id FROM workers WHERE user_id = ?",
+        [user.id]
+      );
+
+      if (worker) {
+        const [attendance] = await db.query(
+          `SELECT * FROM attendance
+           WHERE worker_id = ?
+           AND date = CURDATE()
+           AND working_hours = 0`,
+          [worker.id]
+        );
+
+        if (attendance.length > 0) {
+          return res.status(403).json({
+            message: "You must check-out before logging in again",
+          });
+        }
+      }
+    }
+
     const token = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-      },
+      { id: user.id, role: user.role },
       secret,
-      { expiresIn: "1d" },
+      { expiresIn: "1d" }
     );
 
-    // ✅ SUCCESS
+    // ✅ base URL
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
     return res.json({
       message: "Login success",
       data: {
@@ -70,9 +81,11 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatar: `${baseUrl}/uploads/avatars/${user.avatar}`, // 🔥 ADD THIS
       },
       token,
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -84,6 +97,8 @@ exports.login = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const token = req.headers["authorization"]?.split(" ")[1];
+    const userId = req.user.id;
+    const role = req.user.role;
 
     if (!token) {
       return res.status(400).json({
@@ -91,12 +106,37 @@ exports.logout = async (req, res) => {
       });
     }
 
-    // save token to blacklist
+    // ✅ ONLY apply for worker
+    if (role === "worker") {
+      const [[worker]] = await db.query(
+        "SELECT id FROM workers WHERE user_id = ?",
+        [userId]
+      );
+
+      if (worker) {
+        const [attendance] = await db.query(
+          `SELECT * FROM attendance
+           WHERE worker_id = ?
+           AND date = CURDATE()
+           AND working_hours = 0`, // means not checked out yet
+          [worker.id]
+        );
+
+        if (attendance.length > 0) {
+          return res.status(400).json({
+            message: "You must check-out before logout",
+          });
+        }
+      }
+    }
+
+    // ✅ allow logout
     await db.query("INSERT INTO token_blacklist (token) VALUES (?)", [token]);
 
     res.json({
       message: "Logout success",
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({

@@ -32,7 +32,7 @@ const workerRoutes = require("./routes/workerRoutes");
 app.use("/worker", workerRoutes);
 
 const materialRoutes = require("./routes/materialRoutes");
-app.use("/api/materials", materialRoutes);
+app.use("/api", materialRoutes);
 
 const projectRoutes = require("./routes/projectRoutes");
 app.use("/api/projects", projectRoutes);
