@@ -3,23 +3,35 @@ const router = express.Router();
 
 const {
   addMaterialController,
-  getMaterialsByProjectController
+  getMaterialsByProjectController,
+  updateMaterialImageController,
+  resetMaterialImageController
 } = require("../controllers/materialController");
 
 const { verifyToken } = require("../middlewares/authMiddleware");
 const { checkRole } = require("../middlewares/roleMiddleware");
+const upload = require("../middlewares/uploadMiddleware");
 
 router.post(
-  "/",
+  "/materials",
   verifyToken,
   checkRole("admin"),
-  addMaterialController
+  upload.single("image"),
+  addMaterialController,
 );
 
 router.get(
-  "/project/:project_id",
+  "/materials/project/:project_id",
   verifyToken,
-  getMaterialsByProjectController
+  getMaterialsByProjectController,
 );
+
+router.put(
+  "/materials/:id/image",
+  upload.single("image"),
+  updateMaterialImageController,
+);
+
+router.put("/materials/:id/reset-image", resetMaterialImageController);
 
 module.exports = router;

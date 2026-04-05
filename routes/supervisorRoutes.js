@@ -13,6 +13,8 @@ const {
   createDailyReportController,
   removeWorkerFromTaskController,
   getProjectWorkersController,
+  getAssignedTasks,
+  getUnassignedTasks,
 } = require("../controllers/supervisorController");
 
 // middleware
@@ -46,6 +48,10 @@ router.get(
   verifyToken,
   getTasksByProjectController,
 );
+
+router.get("/project/:project_id/tasks/unassigned", getUnassignedTasks);
+
+router.get("/project/:project_id/tasks/assigned", getAssignedTasks);
 
 router.get(
   "/task-reports",

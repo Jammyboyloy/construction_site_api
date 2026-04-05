@@ -1,28 +1,81 @@
 const db = require("../config/db");
 
+const { getAllWithPagination } = require("../utils/pagination");
+
 const getMyProjectsController = async (req, res) => {
   try {
     const userId = req.user.id;
 
     const [projects] = await db.query(
-      `SELECT 
-        p.id,
-        p.name,
-        p.location,
-        p.status,
-        p.start_date,
-        p.end_date
+      `
+      SELECT
+        p.*,
+
+        -- 👤 creator
+        MAX(cu.name) AS created_by_name,
+
+        -- 🏢 client
+        MAX(c.id) AS client_id,
+        MAX(cu2.name) AS client_name,
+
+        -- 👷 supervisor
+        MAX(su.name) AS supervisor_name,
+        MAX(su.email) AS supervisor_email,
+        MAX(ps.assigned_at) AS supervisor_assigned_at
+
       FROM project_supervisors ps
       JOIN supervisors s ON ps.supervisor_id = s.id
       JOIN projects p ON ps.project_id = p.id
-      WHERE s.user_id = ?`,
-      [userId],
+
+      LEFT JOIN users cu ON p.created_by = cu.id
+
+      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN users cu2 ON c.user_id = cu2.id
+
+      LEFT JOIN project_supervisors ps2 ON ps2.project_id = p.id
+      LEFT JOIN supervisors s2 ON ps2.supervisor_id = s2.id
+      LEFT JOIN users su ON s2.user_id = su.id
+
+      WHERE s.user_id = ?
+      GROUP BY p.id
+      `,
+      [userId]
     );
+
+    const result = projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      location: p.location,
+      status: p.status,
+      start_date: p.start_date,
+      end_date: p.end_date,
+      estimated_budget: p.estimated_budget,
+
+      created_by: p.created_by
+        ? { id: p.created_by, name: p.created_by_name }
+        : null,
+
+      client: p.client_id
+        ? { id: p.client_id, name: p.client_name }
+        : null,
+
+      supervisor: p.supervisor_name
+        ? {
+            name: p.supervisor_name,
+            email: p.supervisor_email,
+            assigned_at: p.supervisor_assigned_at,
+          }
+        : null,
+
+      thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`,
+      created_at: p.created_at
+    }));
 
     res.json({
       message: "My projects fetched successfully",
-      data: projects,
+      data: result,
     });
+
   } catch (err) {
     console.error("GET MY PROJECTS ERROR:", err);
     res.status(500).json({
@@ -383,6 +436,92 @@ const getTasksByProjectController = async (req, res) => {
   }
 };
 
+const getUnassignedTasks = async (req, res) => {
+  try {
+    const projectId = req.params.project_id;
+
+    const [tasks] = await db.query(
+      `
+      SELECT *
+      FROM tasks t
+      WHERE t.project_id = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM task_workers tw WHERE tw.task_id = t.id
+      )
+      ORDER BY t.created_at DESC
+    `,
+      [projectId],
+    );
+
+    res.json({
+      message: "Unassigned tasks",
+      data: tasks,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching unassigned tasks",
+    });
+  }
+};
+
+const getAssignedTasks = async (req, res) => {
+  try {
+    const projectId = req.params.project_id;
+
+    const [tasks] = await db.query(
+      `
+      SELECT DISTINCT t.*
+      FROM tasks t
+      JOIN task_workers tw ON tw.task_id = t.id
+      WHERE t.project_id = ?
+      ORDER BY t.created_at DESC
+      `,
+      [projectId]
+    );
+
+    const result = [];
+
+    for (let t of tasks) {
+      const [workers] = await db.query(
+        `
+        SELECT
+          w.id,
+          u.name,
+          u.email
+        FROM task_workers tw
+        JOIN workers w ON tw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE tw.task_id = ?
+        `,
+        [t.id]
+      );
+
+      result.push({
+        task_id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        progress: t.progress_percentage,
+        deadline: t.deadline,
+        total_workers: workers.length,
+        workers
+      });
+    }
+
+    res.json({
+      message: "Assigned tasks",
+      data: result,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching assigned tasks",
+    });
+  }
+};
+
 const getTaskReportsController = async (req, res) => {
   try {
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
@@ -679,19 +818,37 @@ const getDailyReportsController = async (req, res) => {
     const projectId = req.params.project_id;
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
-    const [reports] = await db.query(
-      `
-      SELECT dr.*, u.name AS supervisor_name
-      FROM daily_reports dr
-      JOIN supervisors s ON dr.supervisor_id = s.id
-      JOIN users u ON s.user_id = u.id
-      WHERE dr.project_id = ?
-      ORDER BY dr.report_date DESC
-    `,
-      [projectId],
-    );
+    const resultData = await getAllWithPagination({
+      baseQuery: `
+        SELECT 
+          dr.*, 
+          u.name AS supervisor_name
+        FROM daily_reports dr
+        JOIN supervisors s ON dr.supervisor_id = s.id
+        JOIN users u ON s.user_id = u.id
+        WHERE dr.project_id = ${projectId}
+      `,
 
-    const result = [];
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM daily_reports dr
+        WHERE dr.project_id = ${projectId}
+      `,
+
+      searchFields: ["u.name", "dr.summary"],
+
+      sortMap: {
+        id: "dr.id",
+        report_date: "dr.report_date",
+        progress: "dr.progress",
+        created_at: "dr.created_at",
+      },
+
+      req,
+    });
+
+    const reports = resultData.data;
+    const finalResult = [];
 
     for (let r of reports) {
       // ✅ images
@@ -703,7 +860,7 @@ const getDailyReportsController = async (req, res) => {
         WHERE t.project_id = ?
         AND DATE(tr.created_at) = ?
         AND tr.status = 'approved'
-      `,
+        `,
         [projectId, r.report_date],
       );
 
@@ -717,11 +874,11 @@ const getDailyReportsController = async (req, res) => {
         FROM daily_materials dm
         JOIN materials m ON dm.material_id = m.id
         WHERE dm.daily_report_id = ?
-      `,
+        `,
         [r.id],
       );
 
-      // ✅ NEW: expenses
+      // ✅ expenses
       const [expenses] = await db.query(
         `
         SELECT
@@ -730,11 +887,11 @@ const getDailyReportsController = async (req, res) => {
           description
         FROM expenses
         WHERE daily_report_id = ?
-      `,
+        `,
         [r.id],
       );
 
-      result.push({
+      finalResult.push({
         id: r.id,
         project_id: r.project_id,
         supervisor_name: r.supervisor_name,
@@ -747,19 +904,22 @@ const getDailyReportsController = async (req, res) => {
         ),
 
         materials,
-        expenses, // ✅ include here
+        expenses,
 
         created_at: r.created_at,
       });
     }
 
     res.json({
+      result: true,
       message: "Daily reports fetched",
-      data: result,
+      data: finalResult,
+      pagination: resultData.pagination,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({
+      result: false,
       message: "Error fetching reports",
     });
   }
@@ -769,30 +929,56 @@ const getProjectWorkersController = async (req, res) => {
   try {
     const projectId = req.params.id;
 
-    const [workers] = await db.query(
-      `
-      SELECT 
-        w.id AS worker_id,
-        u.name,
-        u.email,
-        w.skill_type,
-        w.rate_per_hour
-      FROM project_workers pw
-      JOIN workers w ON pw.worker_id = w.id
-      JOIN users u ON w.user_id = u.id
-      WHERE pw.project_id = ?
-    `,
-      [projectId],
-    );
+    const result = await getAllWithPagination({
+      baseQuery: `
+        SELECT
+          w.id AS worker_id,
+          u.name,
+          u.email,
+          u.avatar,
+          w.skill_type,
+          w.rate_per_hour
+        FROM project_workers pw
+        JOIN workers w ON pw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE pw.project_id = ${projectId}
+      `,
+
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM project_workers pw
+        JOIN workers w ON pw.worker_id = w.id
+        WHERE pw.project_id = ${projectId}
+      `,
+
+      searchFields: ["u.name", "u.email", "w.skill_type"],
+
+      sortMap: {
+        id: "w.id",
+        name: "u.name",
+        email: "u.email",
+        skill_type: "w.skill_type",
+        rate_per_hour: "w.rate_per_hour"
+      },
+
+      req
+    });
 
     res.json({
+      result: true,
       message: "Project workers",
-      total: workers.length,
-      data: workers,
+      total: result.data.length,
+      data: result.data.map(u => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`
+      })),
+      pagination: result.pagination
     });
+
   } catch (err) {
     console.error("GET PROJECT WORKERS ERROR:", err);
     res.status(500).json({
+      result: false,
       message: "Error fetching workers",
     });
   }
@@ -809,4 +995,6 @@ module.exports = {
   getDailyReportsController,
   removeWorkerFromTaskController,
   getProjectWorkersController,
+  getUnassignedTasks,
+  getAssignedTasks,
 };

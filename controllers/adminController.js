@@ -8,18 +8,41 @@ const {
   createClient,
 } = require("../models/adminModel");
 
+const { validateSupervisor, validateWorker, validateClient } = require("../utils/validator");
+
+const {
+  createProject,
+  getAllProjects,
+  updateProject,
+} = require("../models/projectModel");
+
+const { getAllWithPagination } = require("../utils/pagination");
+const { buildSearchWhere } = require("../utils/search");
+
 const createSupervisorAccount = async (req, res) => {
   try {
     const { name, email, password, phone, department } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Missing required fields" });
+    const errors = validateSupervisor({
+      name,
+      email,
+      password,
+      phone,
+      department,
+    });
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        message: errors,
+      });
     }
 
-    // 🔥 CHECK EMAIL FIRST
+    // check email
     const exists = await checkEmail(email);
     if (exists) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({
+        message: ["Email already exists"],
+      });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
@@ -34,51 +57,78 @@ const createSupervisorAccount = async (req, res) => {
 
     await createSupervisor(userId, department);
 
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
     res.json({
       message: "Supervisor created successfully",
       data: {
         user_id: userId,
-        name: name,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
-        email: email,
-        phone: phone,
-        department: department,
+        name,
+        email,
+        phone,
+        department,
+        avatar: `${baseUrl}/uploads/avatars/default-avatar.png`,
       },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error creating supervisor" });
+    res.status(500).json({
+      message: ["Error creating supervisor"],
+    });
   }
 };
 
 const getAllSupervisors = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT 
-        s.id AS supervisor_id,
-        u.id AS user_id,
-        u.name,
-        u.email,
-        u.phone,
-        u.status,
-        u.avatar,
-        u.created_at,
-        s.department,
-        s.hired_date
-      FROM supervisors s
-      JOIN users u ON s.user_id = u.id
-    `);
+    const result = await getAllWithPagination({
+      baseQuery: `
+        SELECT
+          s.id AS supervisor_id,
+          u.id AS user_id,
+          u.name,
+          u.email,
+          u.phone,
+          u.status,
+          u.avatar,
+          u.created_at,
+          s.department,
+          s.hired_date
+        FROM supervisors s
+        JOIN users u ON s.user_id = u.id
+      `,
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM supervisors s
+        JOIN users u ON s.user_id = u.id
+      `,
+      searchFields: ["u.name", "u.email"],
+
+      // 🔥 FIX ambiguous column here
+      sortMap: {
+        id: "u.id",
+        name: "u.name",
+        email: "u.email",
+        created_at: "u.created_at",
+        department: "s.department",
+        hired_date: "s.hired_date",
+      },
+
+      req,
+    });
 
     res.json({
-      message: "Supervisors fetched successfully",
-      data: rows.map((user) => ({
-        ...user,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
+      result: true,
+      message: "Get All Supervisors Successfully",
+      data: result.data.map((u) => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
       })),
+      pagination: result.pagination,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
+      result: false,
       message: "Error fetching supervisors",
     });
   }
@@ -86,21 +136,31 @@ const getAllSupervisors = async (req, res) => {
 
 const createWorkerAccount = async (req, res) => {
   try {
-    const { name, email, password, phone, skill_type, hired_date } = req.body;
+    const { name, email, password, phone, skill_type } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Missing required fields" });
+    const errors = validateWorker({
+      name,
+      email,
+      password,
+      phone,
+      skill_type,
+    });
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        message: errors,
+      });
     }
 
-    // check email
     const exists = await checkEmail(email);
     if (exists) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({
+        message: ["Email already exists"],
+      });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    // create user
     const userId = await createUser(
       name,
       email,
@@ -109,55 +169,80 @@ const createWorkerAccount = async (req, res) => {
       "worker",
     );
 
-    // create worker profile
-    await createWorker(userId, skill_type, hired_date);
+    // 🔥 no hired_date now
+    await createWorker(userId, skill_type, null);
+
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
     res.json({
       message: "Worker created successfully",
       data: {
         user_id: userId,
-        name: name,
-        email: email,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
-        phone: phone,
-        skill_type: skill_type,
-        hired_date: hired_date,
+        name,
+        email,
+        phone,
+        skill_type,
+        avatar: `${baseUrl}/uploads/avatars/default-avatar.png`,
       },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error creating worker" });
+    res.status(500).json({
+      message: ["Error creating worker"],
+    });
   }
 };
 
 const getAllWorkers = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT
-        w.id AS worker_id,
-        u.id AS user_id,
-        u.name,
-        u.email,
-        u.phone,
-        u.status,
-        u.avatar,
-        u.created_at,
-        w.skill_type,
-        w.hired_date
-      FROM workers w
-      JOIN users u ON w.user_id = u.id
-    `);
+    const result = await getAllWithPagination({
+      baseQuery: `
+        SELECT
+          w.id AS worker_id,
+          u.id AS user_id,
+          u.name,
+          u.email,
+          u.phone,
+          u.status,
+          u.avatar,
+          u.created_at,
+          w.skill_type,
+          w.hired_date
+        FROM workers w
+        JOIN users u ON w.user_id = u.id
+      `,
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM workers w
+        JOIN users u ON w.user_id = u.id
+      `,
+      searchFields: ["u.name", "u.email", "w.skill_type"],
+
+      sortMap: {
+        id: "u.id",
+        name: "u.name",
+        email: "u.email",
+        created_at: "u.created_at",
+        skill_type: "w.skill_type",
+        hired_date: "w.hired_date",
+      },
+
+      req,
+    });
 
     res.json({
-      message: "Workers fetched successfully",
-      data: rows.map((user) => ({
-        ...user,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
+      result: true,
+      message: "Get All Workers Successfully",
+      data: result.data.map((u) => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
       })),
+      pagination: result.pagination,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
+      result: false,
       message: "Error fetching workers",
     });
   }
@@ -175,90 +260,133 @@ const createClientAccount = async (req, res) => {
       address,
     } = req.body;
 
-    if (!name || !email || !password || !company_name) {
-      return res.status(400).json({ message: "Missing required fields" });
+    // ✅ VALIDATE
+    const errors = validateClient({
+      name,
+      email,
+      password,
+      phone,
+      company_name,
+      contact_person,
+      address,
+    });
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        message: errors,
+      });
     }
 
+    // ✅ CHECK EMAIL
     const exists = await checkEmail(email);
     if (exists) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({
+        message: ["Email already exists"],
+      });
     }
 
+    // ✅ HASH
     const hashedPassword = bcrypt.hashSync(password, 10);
 
+    // ✅ CREATE USER
     const userId = await createUser(
       name,
       email,
       hashedPassword,
       phone || null,
-      "client",
+      "client"
     );
 
+    // ✅ CREATE CLIENT
     await createClient(
       userId,
       company_name,
-      contact_person || name,
-      address || null,
+      contact_person,
+      address
     );
 
+    // ✅ BASE URL
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    // ✅ RESPONSE
     return res.json({
       message: "Client created successfully",
       data: {
         user_id: userId,
         name,
         email,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
+        avatar: `${baseUrl}/uploads/avatars/default-avatar.png`,
         phone,
         company_name,
-        contact_person: contact_person || name,
+        contact_person,
         address,
       },
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error creating client" });
+    res.status(500).json({
+      message: ["Error creating client"],
+    });
   }
 };
 
+
 const getAllClients = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT
-        c.id AS client_id,
-        u.id AS user_id,
-        u.name,
-        u.email,
-        u.phone,
-        u.status,
-        u.avatar,
-        u.created_at,
-        c.company_name,
-        c.contact_person,
-        c.address
-      FROM clients c
-      JOIN users u ON c.user_id = u.id
-    `);
+    const result = await getAllWithPagination({
+      baseQuery: `
+        SELECT
+          c.id AS client_id,
+          u.id AS user_id,
+          u.name,
+          u.email,
+          u.phone,
+          u.status,
+          u.avatar,
+          u.created_at,
+          c.company_name,
+          c.contact_person,
+          c.address
+        FROM clients c
+        JOIN users u ON c.user_id = u.id
+      `,
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM clients c
+        JOIN users u ON c.user_id = u.id
+      `,
+      searchFields: ["u.name", "u.email", "c.company_name", "c.contact_person"],
 
-    return res.json({
-      message: "Clients fetched successfully",
-      data: rows.map((user) => ({
-        ...user,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
+      sortMap: {
+        id: "u.id",
+        name: "u.name",
+        email: "u.email",
+        created_at: "u.created_at",
+        company_name: "c.company_name",
+        contact_person: "c.contact_person",
+      },
+
+      req,
+    });
+
+    res.json({
+      result: true,
+      message: "Get All Clients Successfully",
+      data: result.data.map((u) => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
       })),
+      pagination: result.pagination,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
+      result: false,
       message: "Error fetching clients",
     });
   }
 };
-
-const {
-  createProject,
-  getAllProjects,
-  updateProject,
-} = require("../models/projectModel");
 
 const createProjectController = async (req, res) => {
   try {
@@ -379,10 +507,70 @@ const resetProjectThumbnail = async (req, res) => {
 
 const getAllProjectsController = async (req, res) => {
   try {
-    const projects = await getAllProjects();
+    const result = await getAllWithPagination({
+      baseQuery: `
+        SELECT
+          p.*,
+
+          -- 👤 creator
+          cu.name AS created_by_name,
+
+          -- 🏢 client
+          c.id AS client_id,
+          cu2.name AS client_name,
+
+          -- 👷 supervisor
+          su.name AS supervisor_name,
+          su.email AS supervisor_email,
+          ps.assigned_at AS supervisor_assigned_at
+
+        FROM projects p
+
+        LEFT JOIN users cu ON p.created_by = cu.id
+
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users cu2 ON c.user_id = cu2.id
+
+        LEFT JOIN project_supervisors ps ON ps.project_id = p.id
+        LEFT JOIN supervisors s ON ps.supervisor_id = s.id
+        LEFT JOIN users su ON s.user_id = su.id
+      `,
+
+      countQuery: `
+        SELECT COUNT(*) as total
+        FROM projects p
+      `,
+
+      searchFields: ["p.name"],
+
+      sortMap: {
+        id: "p.id",
+        name: "p.name",
+        created_at: "p.created_at",
+        status: "p.status",
+      },
+
+      req,
+    });
+
+    const projects = result.data;
 
     for (let p of projects) {
-      // supervisor object
+      // ✅ creator
+      p.created_by = p.created_by
+        ? { id: p.created_by, name: p.created_by_name }
+        : null;
+
+      delete p.created_by_name;
+
+      // ✅ client
+      p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
+
+      // ❌ REMOVE from root (THIS is what you want)
+      delete p.client_id;
+      delete p.client_name;
+
+      // ✅ supervisor
       p.supervisor = p.supervisor_name
         ? {
             name: p.supervisor_name,
@@ -395,35 +583,40 @@ const getAllProjectsController = async (req, res) => {
       delete p.supervisor_email;
       delete p.supervisor_assigned_at;
 
-      // get workers
+      // ✅ workers
       const [workers] = await db.query(
         `
-        SELECT 
+        SELECT
           w.id,
           u.name,
           u.email,
+          u.status,
           pw.assigned_at
         FROM project_workers pw
         JOIN workers w ON pw.worker_id = w.id
         JOIN users u ON w.user_id = u.id
         WHERE pw.project_id = ?
-      `,
-        [p.project_id],
+        `,
+        [p.id],
       );
 
       p.workers = workers;
       p.worker_count = workers.length;
 
+      // ✅ thumbnail
       p.thumbnail = `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`;
     }
 
     res.json({
+      result: true,
       message: "Projects fetched successfully",
       data: projects,
+      pagination: result.pagination,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({
+      result: false,
       message: "Error fetching projects",
     });
   }
@@ -474,8 +667,18 @@ const updateProjectController = async (req, res) => {
 
 const getAvailableSupervisors = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT s.id, u.name
+    const { search } = req.query;
+
+    // ✅ use your util
+    const { where, params } = buildSearchWhere(search, ["u.name", "u.email"]);
+
+    const [rows] = await db.query(
+      `
+      SELECT 
+        s.id,
+        u.name,
+        u.email,
+        u.avatar
       FROM supervisors s
       JOIN users u ON s.user_id = u.id
       WHERE s.id NOT IN (
@@ -484,15 +687,23 @@ const getAvailableSupervisors = async (req, res) => {
         JOIN projects p ON ps.project_id = p.id
         WHERE p.status != 'completed'
       )
-    `);
+      ${where ? `AND (${where.replace("WHERE", "")})` : ""}
+      `,
+      params,
+    );
 
     res.json({
       message: "Available supervisors",
-      data: rows,
+      data: rows.map((u) => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+      })),
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error fetching supervisors" });
+    res.status(500).json({
+      message: "Error fetching supervisors",
+    });
   }
 };
 
@@ -589,8 +800,23 @@ const assignSupervisorController = async (req, res) => {
 
 const getAvailableWorkers = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT w.id, u.name, u.email , w.skill_type
+    const { search } = req.query;
+
+    // ✅ use your util
+    const { where, params } = buildSearchWhere(search, [
+      "u.name",
+      "u.email",
+      "w.skill_type",
+    ]);
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        w.id,
+        u.name,
+        u.email,
+        u.avatar,
+        w.skill_type
       FROM workers w
       JOIN users u ON w.user_id = u.id
       WHERE w.id NOT IN (
@@ -599,11 +825,17 @@ const getAvailableWorkers = async (req, res) => {
         JOIN projects p ON pw.project_id = p.id
         WHERE p.status != 'completed'
       )
-    `);
+      ${where ? `AND (${where.replace("WHERE", "")})` : ""}
+      `,
+      params,
+    );
 
     res.json({
       message: "Available workers",
-      data: rows,
+      data: rows.map((u) => ({
+        ...u,
+        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+      })),
     });
   } catch (err) {
     console.error(err);
