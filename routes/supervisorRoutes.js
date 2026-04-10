@@ -3,7 +3,6 @@ const router = express.Router();
 
 // controllers
 const {
-  getMyProjectsController,
   createTasksController,
   assignWorkersToTaskController,
   getTasksByProjectController,
@@ -22,13 +21,6 @@ const { verifyToken } = require("../middlewares/authMiddleware");
 const { checkRole } = require("../middlewares/roleMiddleware");
 
 // routes
-router.get(
-  "/my-projects",
-  verifyToken,
-  checkRole("supervisor"),
-  getMyProjectsController,
-);
-
 router.post(
   "/tasks",
   verifyToken,
@@ -49,9 +41,9 @@ router.get(
   getTasksByProjectController,
 );
 
-router.get("/project/:project_id/tasks/unassigned", getUnassignedTasks);
+router.get("/project/:project_id/tasks/unassigned", verifyToken, getUnassignedTasks);
 
-router.get("/project/:project_id/tasks/assigned", getAssignedTasks);
+router.get("/project/:project_id/tasks/assigned", verifyToken, getAssignedTasks);
 
 router.get(
   "/task-reports",

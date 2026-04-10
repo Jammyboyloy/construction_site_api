@@ -5,7 +5,8 @@ const {
   addMaterialController,
   getMaterialsByProjectController,
   updateMaterialImageController,
-  resetMaterialImageController
+  resetMaterialImageController,
+  getMaterialByIdController
 } = require("../controllers/materialController");
 
 const { verifyToken } = require("../middlewares/authMiddleware");
@@ -26,12 +27,19 @@ router.get(
   getMaterialsByProjectController,
 );
 
+router.get(
+  "/material/:id",
+  verifyToken,
+  getMaterialByIdController,
+);
+
 router.put(
   "/materials/:id/image",
   upload.single("image"),
+  verifyToken,
   updateMaterialImageController,
 );
 
-router.put("/materials/:id/reset-image", resetMaterialImageController);
+router.put("/materials/:id/reset-image", verifyToken, resetMaterialImageController);
 
 module.exports = router;

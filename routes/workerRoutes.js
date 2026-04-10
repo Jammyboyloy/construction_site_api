@@ -5,7 +5,6 @@ const upload = require("../middlewares/uploadMiddleware");
 
 const {
   getMyTasksController,
-  getMyProjectsController,
   submitTaskReportController,
 } = require("../controllers/workerController");
 const { verifyToken } = require("../middlewares/authMiddleware");
@@ -21,12 +20,5 @@ router.post(
 );
 
 router.get("/my-tasks", verifyToken, checkRole("worker"), getMyTasksController);
-
-router.get(
-  "/my-projects",
-  verifyToken,
-  checkRole("worker"),
-  getMyProjectsController,
-);
 
 module.exports = router;
