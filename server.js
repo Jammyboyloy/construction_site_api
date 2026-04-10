@@ -3,7 +3,7 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const pool = require("./config/db");
-const { Server } = require("socket.io");
+const { server } = require("socket.io");
 
 const app = express();
 
@@ -86,7 +86,7 @@ startCronJobs();
 // start server
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
   try {
