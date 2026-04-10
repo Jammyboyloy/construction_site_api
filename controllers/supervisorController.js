@@ -2,88 +2,6 @@ const db = require("../config/db");
 
 const { getAllWithPagination } = require("../utils/pagination");
 
-const getMyProjectsController = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const [projects] = await db.query(
-      `
-      SELECT
-        p.*,
-
-        -- 👤 creator
-        MAX(cu.name) AS created_by_name,
-
-        -- 🏢 client
-        MAX(c.id) AS client_id,
-        MAX(cu2.name) AS client_name,
-
-        -- 👷 supervisor
-        MAX(su.name) AS supervisor_name,
-        MAX(su.email) AS supervisor_email,
-        MAX(ps.assigned_at) AS supervisor_assigned_at
-
-      FROM project_supervisors ps
-      JOIN supervisors s ON ps.supervisor_id = s.id
-      JOIN projects p ON ps.project_id = p.id
-
-      LEFT JOIN users cu ON p.created_by = cu.id
-
-      LEFT JOIN clients c ON p.client_id = c.id
-      LEFT JOIN users cu2 ON c.user_id = cu2.id
-
-      LEFT JOIN project_supervisors ps2 ON ps2.project_id = p.id
-      LEFT JOIN supervisors s2 ON ps2.supervisor_id = s2.id
-      LEFT JOIN users su ON s2.user_id = su.id
-
-      WHERE s.user_id = ?
-      GROUP BY p.id
-      `,
-      [userId]
-    );
-
-    const result = projects.map(p => ({
-      id: p.id,
-      name: p.name,
-      location: p.location,
-      status: p.status,
-      start_date: p.start_date,
-      end_date: p.end_date,
-      estimated_budget: p.estimated_budget,
-
-      created_by: p.created_by
-        ? { id: p.created_by, name: p.created_by_name }
-        : null,
-
-      client: p.client_id
-        ? { id: p.client_id, name: p.client_name }
-        : null,
-
-      supervisor: p.supervisor_name
-        ? {
-            name: p.supervisor_name,
-            email: p.supervisor_email,
-            assigned_at: p.supervisor_assigned_at,
-          }
-        : null,
-
-      thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`,
-      created_at: p.created_at
-    }));
-
-    res.json({
-      message: "My projects fetched successfully",
-      data: result,
-    });
-
-  } catch (err) {
-    console.error("GET MY PROJECTS ERROR:", err);
-    res.status(500).json({
-      message: "Error fetching projects",
-    });
-  }
-};
-
 const createTasksController = async (req, res) => {
   try {
     const { project_id, tasks } = req.body;
@@ -754,7 +672,7 @@ const createDailyReportController = async (req, res) => {
     `);
 
     for (let a of admins) {
-      const message = `📊 New daily report created for project ${project_id}`;
+      const message = `New daily report created for project ${project_id}`;
 
       await db.query(
         "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
@@ -784,7 +702,7 @@ const createDailyReportController = async (req, res) => {
       );
 
       if (clientUser) {
-        const message = `📈 Project update: new daily report submitted`;
+        const message = `Project update: new daily report submitted`;
 
         await db.query(
           "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
@@ -985,7 +903,6 @@ const getProjectWorkersController = async (req, res) => {
 };
 
 module.exports = {
-  getMyProjectsController,
   createTasksController,
   assignWorkersToTaskController,
   getTasksByProjectController,

@@ -134,6 +134,54 @@ const getAllSupervisors = async (req, res) => {
   }
 };
 
+const getSupervisorById = async (req, res) => {
+  try {
+    const supervisorId = req.params.id;
+
+    const [[supervisor]] = await db.query(
+      `
+      SELECT
+        s.id AS supervisor_id,
+        u.id AS user_id,
+        u.name,
+        u.email,
+        u.phone,
+        u.status,
+        u.avatar,
+        u.created_at,
+        s.department,
+        s.hired_date
+      FROM supervisors s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.id = ?
+      `,
+      [supervisorId]
+    );
+
+    if (!supervisor) {
+      return res.status(404).json({
+        message: "Supervisor not found",
+      });
+    }
+
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    res.json({
+      message: "Get Supervisor Successfully",
+      data: {
+        ...supervisor,
+        avatar: `${baseUrl}/uploads/avatars/${supervisor.avatar}`,
+      },
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching supervisor",
+    });
+  }
+};
+
 const createWorkerAccount = async (req, res) => {
   try {
     const { name, email, password, phone, skill_type } = req.body;
@@ -248,6 +296,54 @@ const getAllWorkers = async (req, res) => {
   }
 };
 
+const getWorkerById = async (req, res) => {
+  try {
+    const workerId = req.params.id;
+
+    const [[worker]] = await db.query(
+      `
+      SELECT
+        w.id AS worker_id,
+        u.id AS user_id,
+        u.name,
+        u.email,
+        u.phone,
+        u.status,
+        u.avatar,
+        u.created_at,
+        w.skill_type,
+        w.hired_date
+      FROM workers w
+      JOIN users u ON w.user_id = u.id
+      WHERE w.id = ?
+      `,
+      [workerId]
+    );
+
+    if (!worker) {
+      return res.status(404).json({
+        message: "Worker not found",
+      });
+    }
+
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    res.json({
+      message: "Get Worker Successfully",
+      data: {
+        ...worker,
+        avatar: `${baseUrl}/uploads/avatars/${worker.avatar}`,
+      },
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching worker",
+    });
+  }
+};
+
 const createClientAccount = async (req, res) => {
   try {
     const {
@@ -331,7 +427,6 @@ const createClientAccount = async (req, res) => {
   }
 };
 
-
 const getAllClients = async (req, res) => {
   try {
     const result = await getAllWithPagination({
@@ -384,6 +479,55 @@ const getAllClients = async (req, res) => {
     res.status(500).json({
       result: false,
       message: "Error fetching clients",
+    });
+  }
+};
+
+const getClientById = async (req, res) => {
+  try {
+    const clientId = req.params.id;
+
+    const [[client]] = await db.query(
+      `
+      SELECT
+        c.id AS client_id,
+        u.id AS user_id,
+        u.name,
+        u.email,
+        u.phone,
+        u.status,
+        u.avatar,
+        u.created_at,
+        c.company_name,
+        c.contact_person,
+        c.address
+      FROM clients c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.id = ?
+      `,
+      [clientId]
+    );
+
+    if (!client) {
+      return res.status(404).json({
+        message: "Client not found",
+      });
+    }
+
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    res.json({
+      message: "Get Client Successfully",
+      data: {
+        ...client,
+        avatar: `${baseUrl}/uploads/avatars/${client.avatar}`,
+      },
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching client",
     });
   }
 };
@@ -618,6 +762,111 @@ const getAllProjectsController = async (req, res) => {
     res.status(500).json({
       result: false,
       message: "Error fetching projects",
+    });
+  }
+};
+
+const getProjectByIdController = async (req, res) => {
+  try {
+    const projectId = req.params.id;
+
+    const [[p]] = await db.query(
+      `
+      SELECT
+        p.*,
+
+        cu.name AS created_by_name,
+
+        c.id AS client_id,
+        cu2.name AS client_name,
+
+        su.name AS supervisor_name,
+        su.email AS supervisor_email,
+        ps.assigned_at AS supervisor_assigned_at
+
+      FROM projects p
+
+      LEFT JOIN users cu ON p.created_by = cu.id
+
+      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN users cu2 ON c.user_id = cu2.id
+
+      LEFT JOIN project_supervisors ps ON ps.project_id = p.id
+      LEFT JOIN supervisors s ON ps.supervisor_id = s.id
+      LEFT JOIN users su ON s.user_id = su.id
+
+      WHERE p.id = ?
+      `,
+      [projectId]
+    );
+
+    if (!p) {
+      return res.status(404).json({
+        message: "Project not found",
+      });
+    }
+
+    // ✅ creator
+    p.created_by = p.created_by
+      ? { id: p.created_by, name: p.created_by_name }
+      : null;
+
+    delete p.created_by_name;
+
+    // ✅ client
+    p.client = p.client_id
+      ? { id: p.client_id, name: p.client_name }
+      : null;
+
+    delete p.client_id;
+    delete p.client_name;
+
+    // ✅ supervisor
+    p.supervisor = p.supervisor_name
+      ? {
+          name: p.supervisor_name,
+          email: p.supervisor_email,
+          assigned_at: p.supervisor_assigned_at,
+        }
+      : null;
+
+    delete p.supervisor_name;
+    delete p.supervisor_email;
+    delete p.supervisor_assigned_at;
+
+    // ✅ workers
+    const [workers] = await db.query(
+      `
+      SELECT
+        w.id,
+        u.name,
+        u.email,
+        u.status,
+        pw.assigned_at
+      FROM project_workers pw
+      JOIN workers w ON pw.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      WHERE pw.project_id = ?
+      `,
+      [p.id]
+    );
+
+    p.workers = workers;
+    p.worker_count = workers.length;
+
+    // ✅ thumbnail
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    p.thumbnail = `${baseUrl}/uploads/projects/${p.thumbnail}`;
+
+    res.json({
+      message: "Project fetched successfully",
+      data: p,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching project",
     });
   }
 };
@@ -1132,4 +1381,8 @@ module.exports = {
   updateUserPassword,
   updateUserController,
   updateUserStatusController,
+  getSupervisorById,
+  getWorkerById,
+  getClientById,
+  getProjectByIdController
 };

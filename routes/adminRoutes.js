@@ -6,6 +6,7 @@ const {
   createWorkerAccount,
   createClientAccount,
   getAllSupervisors,
+  getSupervisorById,
   getAllWorkers,
   getAllClients,
   createProjectController,
@@ -20,7 +21,10 @@ const {
   updateUserController,
   updateUserPassword,
   updateUserStatusController,
-  removeWorkerFromProject
+  removeWorkerFromProject,
+  getWorkerById,
+  getClientById,
+  getProjectByIdController,
 } = require("../controllers/adminController");
 const { verifyToken } = require("../middlewares/authMiddleware");
 const { checkRole } = require("../middlewares/roleMiddleware");
@@ -35,6 +39,13 @@ router.post(
 
 router.get("/supervisors", verifyToken, checkRole("admin"), getAllSupervisors);
 
+router.get(
+  "/supervisor/:id",
+  verifyToken,
+  checkRole("admin"),
+  getSupervisorById,
+);
+
 router.post(
   "/create-worker",
   verifyToken,
@@ -43,6 +54,8 @@ router.post(
 );
 
 router.get("/workers", verifyToken, checkRole("admin"), getAllWorkers);
+
+router.get("/worker/:id", verifyToken, checkRole("admin"), getWorkerById);
 
 router.post(
   "/create-client",
@@ -53,11 +66,13 @@ router.post(
 
 router.get("/clients", verifyToken, checkRole("admin"), getAllClients);
 
+router.get("/client/:id", verifyToken, checkRole("admin"), getClientById);
+
 router.post(
   "/create-project",
   verifyToken,
   checkRole("admin"),
-  createProjectController
+  createProjectController,
 );
 
 router.put(
@@ -65,84 +80,86 @@ router.put(
   verifyToken,
   checkRole("admin"),
   upload.single("thumbnail"),
-  updateProjectThumbnail
+  updateProjectThumbnail,
 );
 
 router.put(
   "/project/:id/reset-thumbnail",
   verifyToken,
   checkRole("admin"),
-  resetProjectThumbnail
+  resetProjectThumbnail,
 );
 
 router.get(
   "/projects",
   verifyToken,
   checkRole("admin"),
-  getAllProjectsController
+  getAllProjectsController,
+);
+
+router.get(
+  "/project/:id",
+  verifyToken,
+  checkRole("admin"),
+  getProjectByIdController,
 );
 
 router.put(
   "/project/:id",
   verifyToken,
   checkRole("admin"),
-  updateProjectController
+  updateProjectController,
 );
 
 router.get(
   "/available-supervisors",
   verifyToken,
   checkRole("admin"),
-  getAvailableSupervisors
+  getAvailableSupervisors,
 );
 
 router.put(
   "/project/:id/assign-supervisor",
   verifyToken,
   checkRole("admin"),
-  assignSupervisorController
+  assignSupervisorController,
 );
 
 router.get(
   "/available-workers",
   verifyToken,
   checkRole("admin"),
-  getAvailableWorkers
+  getAvailableWorkers,
 );
 
 router.put(
   "/project/:id/assign-workers",
   verifyToken,
   checkRole("admin"),
-  assignWorkersController
+  assignWorkersController,
 );
 
 router.delete(
   "/project/:id/remove-worker",
   verifyToken,
   checkRole("admin"),
-  removeWorkerFromProject
+  removeWorkerFromProject,
 );
 
-router.put(
-  "/user/:id",
-  verifyToken,
-  checkRole("admin"),
-  updateUserController
-);
+router.put("/user/:id", verifyToken, checkRole("admin"), updateUserController);
 
 router.put(
   "/user/:id/password",
   verifyToken,
   checkRole("admin"),
-  updateUserPassword
+  updateUserPassword,
 );
 
 router.put(
   "/status/user/:id",
   verifyToken,
   checkRole("admin"),
-  updateUserStatusController
+  updateUserStatusController,
 );
 
 module.exports = router;

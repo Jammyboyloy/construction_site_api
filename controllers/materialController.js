@@ -208,9 +208,55 @@ const getMaterialsByProjectController = async (req, res) => {
   }
 };
 
+const getMaterialByIdController = async (req, res) => {
+  try {
+    const materialId = req.params.id;
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    const [[m]] = await db.query(
+      `
+      SELECT
+        id,
+        project_id,
+        name,
+        supplier,
+        cost_per_unit,
+        initial_quantity,
+        quantity AS remaining_quantity,
+        (initial_quantity - quantity) AS used_quantity,
+        image
+      FROM materials
+      WHERE id = ?
+      `,
+      [materialId]
+    );
+
+    if (!m) {
+      return res.status(404).json({
+        message: "Material not found",
+      });
+    }
+
+    res.json({
+      message: "Material fetched successfully",
+      data: {
+        ...m,
+        image: `${baseUrl}/uploads/materials/${m.image}`,
+      },
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching material",
+    });
+  }
+};
+
 module.exports = {
   addMaterialController,
   getMaterialsByProjectController,
   updateMaterialImageController,
   resetMaterialImageController,
+  getMaterialByIdController,
 };

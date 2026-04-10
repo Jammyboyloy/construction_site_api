@@ -140,10 +140,160 @@ const getUnreadCount = async (req, res) => {
   }
 };
 
+const getMyProjectsController = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
+    let projectQuery = "";
+    let params = [];
+
+    // 🔥 CLIENT
+    if (role === "client") {
+      const [[client]] = await db.query(
+        "SELECT id FROM clients WHERE user_id = ?",
+        [userId]
+      );
+
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+
+      projectQuery = `WHERE p.client_id = ?`;
+      params = [client.id];
+    }
+
+    // 🔥 SUPERVISOR
+    else if (role === "supervisor") {
+      const [[sup]] = await db.query(
+        "SELECT id FROM supervisors WHERE user_id = ?",
+        [userId]
+      );
+
+      if (!sup) {
+        return res.status(404).json({ message: "Supervisor not found" });
+      }
+
+      projectQuery = `
+        JOIN project_supervisors ps2 ON ps2.project_id = p.id
+        WHERE ps2.supervisor_id = ?
+      `;
+      params = [sup.id];
+    }
+
+    // 🔥 WORKER
+    else if (role === "worker") {
+      const [[worker]] = await db.query(
+        "SELECT id FROM workers WHERE user_id = ?",
+        [userId]
+      );
+
+      if (!worker) {
+        return res.status(404).json({ message: "Worker not found" });
+      }
+
+      projectQuery = `
+        JOIN project_workers pw2 ON pw2.project_id = p.id
+        WHERE pw2.worker_id = ?
+      `;
+      params = [worker.id];
+    }
+
+    // 🔥 QUERY
+    const [projects] = await db.query(
+      `
+      SELECT
+        p.*,
+        cu.name AS created_by_name,
+        c.id AS client_id,
+        cu2.name AS client_name,
+        su.name AS supervisor_name,
+        su.email AS supervisor_email,
+        ps.assigned_at AS supervisor_assigned_at
+
+      FROM projects p
+
+      LEFT JOIN users cu ON p.created_by = cu.id
+      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN users cu2 ON c.user_id = cu2.id
+
+      LEFT JOIN project_supervisors ps ON ps.project_id = p.id
+      LEFT JOIN supervisors s ON ps.supervisor_id = s.id
+      LEFT JOIN users su ON s.user_id = su.id
+
+      ${projectQuery}
+      `,
+      params
+    );
+
+    const finalData = [];
+
+    for (let p of projects) {
+      // creator
+      p.created_by = p.created_by
+        ? { id: p.created_by, name: p.created_by_name }
+        : null;
+      delete p.created_by_name;
+
+      // client
+      p.client = p.client_id
+        ? { id: p.client_id, name: p.client_name }
+        : null;
+      delete p.client_id;
+      delete p.client_name;
+
+      // supervisor
+      p.supervisor = p.supervisor_name
+        ? {
+            name: p.supervisor_name,
+            email: p.supervisor_email,
+            assigned_at: p.supervisor_assigned_at,
+          }
+        : null;
+      delete p.supervisor_name;
+      delete p.supervisor_email;
+      delete p.supervisor_assigned_at;
+
+      // workers
+      const [workers] = await db.query(
+        `
+        SELECT w.id, u.name, u.email, u.status, pw.assigned_at
+        FROM project_workers pw
+        JOIN workers w ON pw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE pw.project_id = ?
+        `,
+        [p.id]
+      );
+
+      p.workers = workers;
+      p.worker_count = workers.length;
+
+      // thumbnail
+      p.thumbnail = `${baseUrl}/uploads/projects/${p.thumbnail}`;
+
+      finalData.push(p);
+    }
+
+    res.json({
+      message: "My projects fetched successfully",
+      data: finalData,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error fetching projects",
+    });
+  }
+};
+
 module.exports = {
   updateAvatar,
   resetAvatar,
   getMyNotifications,
   markAllNotificationsRead,
-  getUnreadCount
+  getUnreadCount,
+  getMyProjectsController
 };
