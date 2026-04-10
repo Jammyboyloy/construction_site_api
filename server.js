@@ -3,7 +3,7 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const pool = require("./config/db");
-const { server } = require("socket.io");
+const { Server } = require("socket.io");
 
 const app = express();
 
