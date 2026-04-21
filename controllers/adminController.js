@@ -8,7 +8,11 @@ const {
   createClient,
 } = require("../models/adminModel");
 
-const { validateSupervisor, validateWorker, validateClient } = require("../utils/validator");
+const {
+  validateSupervisor,
+  validateWorker,
+  validateClient,
+} = require("../utils/validator");
 
 const {
   createProject,
@@ -21,14 +25,13 @@ const { buildSearchWhere } = require("../utils/search");
 
 const createSupervisorAccount = async (req, res) => {
   try {
-    const { name, email, password, phone, department } = req.body;
+    const { name, email, password, phone } = req.body;
 
     const errors = validateSupervisor({
       name,
       email,
       password,
       phone,
-      department,
     });
 
     if (errors.length > 0) {
@@ -155,7 +158,7 @@ const getSupervisorById = async (req, res) => {
       JOIN users u ON s.user_id = u.id
       WHERE s.id = ?
       `,
-      [supervisorId]
+      [supervisorId],
     );
 
     if (!supervisor) {
@@ -173,7 +176,6 @@ const getSupervisorById = async (req, res) => {
         avatar: `${baseUrl}/uploads/avatars/${supervisor.avatar}`,
       },
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -317,7 +319,7 @@ const getWorkerById = async (req, res) => {
       JOIN users u ON w.user_id = u.id
       WHERE w.id = ?
       `,
-      [workerId]
+      [workerId],
     );
 
     if (!worker) {
@@ -335,7 +337,6 @@ const getWorkerById = async (req, res) => {
         avatar: `${baseUrl}/uploads/avatars/${worker.avatar}`,
       },
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -390,16 +391,11 @@ const createClientAccount = async (req, res) => {
       email,
       hashedPassword,
       phone || null,
-      "client"
+      "client",
     );
 
     // ✅ CREATE CLIENT
-    await createClient(
-      userId,
-      company_name,
-      contact_person,
-      address
-    );
+    await createClient(userId, company_name, contact_person, address);
 
     // ✅ BASE URL
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
@@ -418,7 +414,6 @@ const createClientAccount = async (req, res) => {
         address,
       },
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -505,7 +500,7 @@ const getClientById = async (req, res) => {
       JOIN users u ON c.user_id = u.id
       WHERE c.id = ?
       `,
-      [clientId]
+      [clientId],
     );
 
     if (!client) {
@@ -523,7 +518,6 @@ const getClientById = async (req, res) => {
         avatar: `${baseUrl}/uploads/avatars/${client.avatar}`,
       },
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -797,7 +791,7 @@ const getProjectByIdController = async (req, res) => {
 
       WHERE p.id = ?
       `,
-      [projectId]
+      [projectId],
     );
 
     if (!p) {
@@ -814,9 +808,7 @@ const getProjectByIdController = async (req, res) => {
     delete p.created_by_name;
 
     // ✅ client
-    p.client = p.client_id
-      ? { id: p.client_id, name: p.client_name }
-      : null;
+    p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
 
     delete p.client_id;
     delete p.client_name;
@@ -848,7 +840,7 @@ const getProjectByIdController = async (req, res) => {
       JOIN users u ON w.user_id = u.id
       WHERE pw.project_id = ?
       `,
-      [p.id]
+      [p.id],
     );
 
     p.workers = workers;
@@ -862,7 +854,6 @@ const getProjectByIdController = async (req, res) => {
       message: "Project fetched successfully",
       data: p,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -1384,5 +1375,5 @@ module.exports = {
   getSupervisorById,
   getWorkerById,
   getClientById,
-  getProjectByIdController
+  getProjectByIdController,
 };
