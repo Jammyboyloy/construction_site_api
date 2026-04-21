@@ -1,11 +1,10 @@
-const validateSupervisor = ({ name, email, password, phone, department }) => {
+const validateSupervisor = ({ name, email, password, phone }) => {
   let errors = [];
 
   if (!name) errors.push("Name is required");
   if (!email) errors.push("Email is required");
   if (!password) errors.push("Password is required");
   if (!phone) errors.push("Phone is required");
-  if (!department) errors.push("Department is required");
 
   if (email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -21,11 +20,9 @@ const validateSupervisor = ({ name, email, password, phone, department }) => {
   if (phone) {
     if (!/^[0-9]+$/.test(phone)) {
       errors.push("Phone must contain only numbers");
-    }
-    else if (!phone.startsWith("0")) {
+    } else if (!phone.startsWith("0")) {
       errors.push("Phone must start with 0");
-    }
-    else if (phone.length !== 9) {
+    } else if (phone.length !== 9) {
       errors.push("Phone must be exactly 9 digits");
     }
   }
@@ -33,13 +30,7 @@ const validateSupervisor = ({ name, email, password, phone, department }) => {
   return errors;
 };
 
-const validateWorker = ({
-  name,
-  email,
-  password,
-  phone,
-  skill_type,
-}) => {
+const validateWorker = ({ name, email, password, phone, skill_type }) => {
   let errors = [];
 
   // 🔥 REQUIRED
@@ -156,7 +147,5 @@ module.exports = {
   validateSupervisor,
   validateWorker,
   validateClient,
-  validateMaterial, 
+  validateMaterial,
 };
-
-
