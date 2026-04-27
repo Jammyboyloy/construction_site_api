@@ -146,13 +146,12 @@ exports.logout = async (req, res) => {
 };
 
 exports.getMe = async (req, res) => {
-  // console.log("USER:", req.user);
   try {
     const userId = req.user.id;
 
     const [rows] = await db.query(
       `
-      SELECT 
+      SELECT
         u.id,
         u.name,
         u.email,
@@ -163,8 +162,13 @@ exports.getMe = async (req, res) => {
         u.created_at,
 
         a.admin_level,
+
         s.department,
+        s.hired_date AS supervisor_hired_date,
+
         w.skill_type,
+        w.hired_date AS worker_hired_date,
+
         c.company_name
 
       FROM users u
@@ -173,17 +177,40 @@ exports.getMe = async (req, res) => {
       LEFT JOIN workers w ON u.id = w.user_id
       LEFT JOIN clients c ON u.id = c.user_id
       WHERE u.id = ?
-    `,
-      [userId],
+      `,
+      [userId]
     );
 
     const user = rows[0];
 
+    const baseUrl =
+      "https://construction-site-api-3uii.onrender.com/uploads/avatars";
+
     return res.json({
       message: "User profile fetched",
       data: {
-        ...user,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${user.avatar}`,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        avatar: `${baseUrl}/${user.avatar}`,
+        created_at: user.created_at,
+
+        // role-specific
+        admin_level: user.admin_level || null,
+        department: user.department || null,
+        skill_type: user.skill_type || null,
+        company_name: user.company_name || null,
+
+        // ✅ unified hired_date
+        hired_date:
+          user.role === "supervisor"
+            ? user.supervisor_hired_date
+            : user.role === "worker"
+            ? user.worker_hired_date
+            : null,
       },
     });
   } catch (err) {

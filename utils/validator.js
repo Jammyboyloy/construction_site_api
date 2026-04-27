@@ -77,8 +77,6 @@ const validateClient = ({
   email,
   password,
   phone,
-  company_name,
-  contact_person,
   address,
 }) => {
   let errors = [];
@@ -87,8 +85,6 @@ const validateClient = ({
   if (!email) errors.push("Email is required");
   if (!password) errors.push("Password is required");
   if (!phone) errors.push("Phone is required");
-  if (!company_name) errors.push("Company name is required");
-  if (!contact_person) errors.push("Contact person is required");
   if (!address) errors.push("Address is required");
 
   if (email) {
