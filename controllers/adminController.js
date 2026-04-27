@@ -35,12 +35,9 @@ const createSupervisorAccount = async (req, res) => {
     });
 
     if (errors.length > 0) {
-      return res.status(400).json({
-        message: errors,
-      });
+      return res.status(400).json({ message: errors });
     }
 
-    // check email
     const exists = await checkEmail(email);
     if (exists) {
       return res.status(400).json({
@@ -55,10 +52,11 @@ const createSupervisorAccount = async (req, res) => {
       email,
       hashedPassword,
       phone || null,
-      "supervisor",
+      "supervisor"
     );
 
-    await createSupervisor(userId, department);
+    // ✅ FIX HERE
+    await createSupervisor(userId, null);
 
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
@@ -69,7 +67,7 @@ const createSupervisorAccount = async (req, res) => {
         name,
         email,
         phone,
-        department,
+        department: null,
         avatar: `${baseUrl}/uploads/avatars/default-avatar.png`,
       },
     });
@@ -257,7 +255,8 @@ const getAllWorkers = async (req, res) => {
           u.avatar,
           u.created_at,
           w.skill_type,
-          w.hired_date
+          w.hired_date,
+          w.rate_per_hour   -- ✅ ADDED
         FROM workers w
         JOIN users u ON w.user_id = u.id
       `,
@@ -275,6 +274,7 @@ const getAllWorkers = async (req, res) => {
         created_at: "u.created_at",
         skill_type: "w.skill_type",
         hired_date: "w.hired_date",
+        rate_per_hour: "w.rate_per_hour", // ✅ OPTIONAL SORT
       },
 
       req,
@@ -314,12 +314,13 @@ const getWorkerById = async (req, res) => {
         u.avatar,
         u.created_at,
         w.skill_type,
-        w.hired_date
+        w.hired_date,
+        w.rate_per_hour   -- ✅ ADDED
       FROM workers w
       JOIN users u ON w.user_id = u.id
       WHERE w.id = ?
       `,
-      [workerId],
+      [workerId]
     );
 
     if (!worker) {
@@ -352,19 +353,14 @@ const createClientAccount = async (req, res) => {
       email,
       password,
       phone,
-      company_name,
-      contact_person,
-      address,
+      address, 
     } = req.body;
 
-    // ✅ VALIDATE
     const errors = validateClient({
       name,
       email,
       password,
       phone,
-      company_name,
-      contact_person,
       address,
     });
 
@@ -374,7 +370,6 @@ const createClientAccount = async (req, res) => {
       });
     }
 
-    // ✅ CHECK EMAIL
     const exists = await checkEmail(email);
     if (exists) {
       return res.status(400).json({
@@ -382,25 +377,21 @@ const createClientAccount = async (req, res) => {
       });
     }
 
-    // ✅ HASH
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    // ✅ CREATE USER
     const userId = await createUser(
       name,
       email,
       hashedPassword,
       phone || null,
-      "client",
+      "client"
     );
 
-    // ✅ CREATE CLIENT
-    await createClient(userId, company_name, contact_person, address);
+    // ✅ set null
+    await createClient(userId, null, null, address || null);
 
-    // ✅ BASE URL
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
-    // ✅ RESPONSE
     return res.json({
       message: "Client created successfully",
       data: {
@@ -409,9 +400,9 @@ const createClientAccount = async (req, res) => {
         email,
         avatar: `${baseUrl}/uploads/avatars/default-avatar.png`,
         phone,
-        company_name,
-        contact_person,
-        address,
+        company_name: null,
+        contact_person: null,
+        address: address || null,
       },
     });
   } catch (err) {
