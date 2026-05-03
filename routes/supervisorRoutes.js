@@ -41,15 +41,23 @@ router.get(
   getTasksByProjectController,
 );
 
-router.get("/project/:project_id/tasks/unassigned", verifyToken, getUnassignedTasks);
-
-router.get("/project/:project_id/tasks/assigned", verifyToken, getAssignedTasks);
+router.get(
+  "/project/:project_id/tasks/unassigned",
+  verifyToken,
+  getUnassignedTasks,
+);
 
 router.get(
-  "/task-reports",
+  "/project/:project_id/tasks/assigned",
+  verifyToken,
+  getAssignedTasks,
+);
+
+router.get(
+  "/projects/:project_id/task-report",
   verifyToken,
   checkRole("supervisor"),
-  getTaskReportsController,
+  getTasksByProjectController,
 );
 
 router.put(
