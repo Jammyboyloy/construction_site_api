@@ -2,129 +2,41 @@ const db = require("../config/db");
 
 const { getAllWithPagination } = require("../utils/pagination");
 
-const createTasksController = async (req, res) => {
+const getMyTasksController = async (req, res) => {
   try {
-    const { project_id, tasks } = req.body;
-    const supervisorUserId = req.user.id;
+    const userId = req.user.id;
 
-    if (!project_id || !tasks || tasks.length === 0) {
-      return res.status(400).json({
-        message: "Project ID and tasks are required",
-      });
-    }
-
-    const createdTasks = [];
-
-    // ✅ CREATE TASKS
-    for (let t of tasks) {
-      const [result] = await db.query(
-        `INSERT INTO tasks (project_id, title, description, deadline, assigned_by, status, progress_percentage)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          project_id,
-          t.title,
-          t.description || null,
-          t.deadline || null,
-          supervisorUserId,
-          "pending",
-          0,
-        ],
-      );
-
-      createdTasks.push({
-        id: result.insertId,
-        title: t.title,
-      });
-    }
-
-    // 🔥 MESSAGE
-    const message = `New tasks created for Project ID ${project_id}`;
-
-    // =========================
-    // 🔥 NOTIFY WORKERS (PROJECT)
-    // =========================
-    const [workers] = await db.query(
+    const [tasks] = await db.query(
       `
-      SELECT u.id
-      FROM project_workers pw
-      JOIN workers w ON pw.worker_id = w.id
+      SELECT
+        t.id AS task_id,   -- ✅ IMPORTANT
+        t.title,
+        t.description,
+        t.status,
+        t.progress_percentage,
+        t.deadline,
+        t.created_at,
+        p.id AS project_id,   -- ✅ also useful
+        p.name AS project_name
+      FROM task_workers tw
+      JOIN workers w ON tw.worker_id = w.id
       JOIN users u ON w.user_id = u.id
-      WHERE pw.project_id = ?
+      JOIN tasks t ON tw.task_id = t.id
+      JOIN projects p ON t.project_id = p.id
+      WHERE u.id = ?
+      ORDER BY t.created_at DESC
     `,
-      [project_id],
+      [userId],
     );
 
-    const { io, users } = require("../server");
-
-    for (let w of workers) {
-      // save DB
-      await db.query(
-        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-        [w.id, message],
-      );
-
-      // realtime
-      if (users[w.id]) {
-        io.to(users[w.id]).emit("notification", { message });
-      }
-    }
-
-    // =========================
-    // 🔥 NOTIFY CLIENT
-    // =========================
-    const [client] = await db.query(
-      `
-      SELECT u.id
-      FROM projects p
-      JOIN clients c ON p.client_id = c.id
-      JOIN users u ON c.user_id = u.id
-      WHERE p.id = ?
-    `,
-      [project_id],
-    );
-
-    if (client.length > 0) {
-      const clientId = client[0].id;
-
-      await db.query(
-        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-        [clientId, message],
-      );
-
-      if (users[clientId]) {
-        io.to(users[clientId]).emit("notification", { message });
-      }
-    }
-
-    // =========================
-    // 🔥 NOTIFY ADMINS
-    // =========================
-    const [admins] = await db.query(
-      "SELECT id FROM users WHERE role = 'admin'",
-    );
-
-    for (let a of admins) {
-      await db.query(
-        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-        [a.id, message],
-      );
-
-      if (users[a.id]) {
-        io.to(users[a.id]).emit("notification", { message });
-      }
-    }
-
-    // =========================
-    // ✅ RESPONSE
-    // =========================
     res.json({
-      message: "Tasks created successfully",
-      data: createdTasks,
+      message: "My tasks fetched",
+      data: tasks,
     });
   } catch (err) {
-    console.error("CREATE TASKS ERROR:", err);
+    console.error("GET MY TASKS ERROR:", err);
     res.status(500).json({
-      message: "Error creating tasks",
+      message: "Error fetching tasks",
     });
   }
 };
@@ -284,74 +196,88 @@ const removeWorkerFromTaskController = async (req, res) => {
   }
 };
 
-const getTasksByProjectController = async (req, res) => {
+const getTaskReportsByProject = async (req, res) => {
   try {
-    const projectId = req.params.id; // ✅ change here
+    const userId = req.user.id;
+    const projectId = req.params.project_id;
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
-    // ✅ summary
-    const [[{ total_tasks }]] = await db.query(
-      "SELECT COUNT(*) as total_tasks FROM tasks WHERE project_id = ?",
-      [projectId],
+    // ✅ get supervisor
+    const [[sup]] = await db.query(
+      "SELECT id FROM supervisors WHERE user_id = ?",
+      [userId]
     );
 
-    const [[{ project_progress }]] = await db.query(
-      "SELECT AVG(progress_percentage) as project_progress FROM tasks WHERE project_id = ?",
-      [projectId],
-    );
+    if (!sup) {
+      return res.status(404).json({ message: "Supervisor not found" });
+    }
 
-    const [tasks] = await db.query(
+    // ✅ check supervisor belongs to project
+    const [[check]] = await db.query(
       `
-      SELECT *
-      FROM tasks
-      WHERE project_id = ?
-      ORDER BY created_at DESC
-    `,
-      [projectId],
+      SELECT * FROM project_supervisors
+      WHERE supervisor_id = ? AND project_id = ?
+      `,
+      [sup.id, projectId]
     );
 
-    const result = [];
-
-    for (let t of tasks) {
-      const [workers] = await db.query(
-        `
-        SELECT
-          w.id,
-          u.name,
-          u.email
-        FROM task_workers tw
-        JOIN workers w ON tw.worker_id = w.id
-        JOIN users u ON w.user_id = u.id
-        WHERE tw.task_id = ?
-      `,
-        [t.id],
-      );
-
-      result.push({
-        task_id: t.id,
-        project_id: projectId, // ✅ add this (important for frontend)
-        title: t.title,
-        description: t.description,
-        status: t.status,
-        progress: t.progress_percentage,
-        deadline: t.deadline,
-        total_workers: workers.length,
-        workers: workers,
+    if (!check) {
+      return res.status(403).json({
+        message: "You are not assigned to this project",
       });
     }
 
+    // ✅ get reports
+    const [reports] = await db.query(
+      `
+      SELECT 
+        tr.id,
+        tr.task_id,
+        tr.note,
+        tr.status,
+        tr.image,
+        tr.created_at,
+
+        t.title AS task_title,
+        t.project_id,
+
+        u.name AS worker_name
+
+      FROM task_reports tr
+      JOIN tasks t ON tr.task_id = t.id
+      JOIN workers w ON tr.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+
+      WHERE t.project_id = ?
+      ORDER BY tr.created_at DESC
+      `,
+      [projectId]
+    );
+
+    const result = reports.map((r) => ({
+      id: r.id,
+      project_id: r.project_id,
+      task_id: r.task_id,
+      task_title: r.task_title,
+      worker_name: r.worker_name,
+      note: r.note,
+      status: r.status,
+      image: r.image
+        ? `${baseUrl}/uploads/reports/${r.image}`
+        : null,
+      created_at: r.created_at,
+    }));
+
     res.json({
-      message: "Project tasks detail",
-      project_id: projectId, // ✅ also here (clean API)
-      summary: {
-        total_tasks,
-        project_progress: Math.round(project_progress || 0),
-      },
-      tasks: result,
+      message: "Project reports fetched",
+      project_id: projectId,
+      data: result,
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error fetching tasks",
+      message: "Error fetching reports",
     });
   }
 };
