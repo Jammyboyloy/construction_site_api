@@ -7,13 +7,14 @@ const getMyTasksController = async (req, res) => {
     const [tasks] = await db.query(
       `
       SELECT
-        t.id,
+        t.id AS task_id,   -- ✅ IMPORTANT
         t.title,
         t.description,
         t.status,
         t.progress_percentage,
         t.deadline,
         t.created_at,
+        p.id AS project_id,   -- ✅ also useful
         p.name AS project_name
       FROM task_workers tw
       JOIN workers w ON tw.worker_id = w.id
