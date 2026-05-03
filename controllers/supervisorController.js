@@ -284,88 +284,72 @@ const removeWorkerFromTaskController = async (req, res) => {
   }
 };
 
-const getTaskReportsByProject = async (req, res) => {
+const getTasksByProjectController = async (req, res) => {
   try {
-    const userId = req.user.id;
     const projectId = req.params.project_id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
-    // ✅ get supervisor
-    const [[sup]] = await db.query(
-      "SELECT id FROM supervisors WHERE user_id = ?",
-      [userId]
+    // ✅ summary
+    const [[{ total_tasks }]] = await db.query(
+      "SELECT COUNT(*) as total_tasks FROM tasks WHERE project_id = ?",
+      [projectId],
     );
 
-    if (!sup) {
-      return res.status(404).json({ message: "Supervisor not found" });
-    }
+    const [[{ project_progress }]] = await db.query(
+      "SELECT AVG(progress_percentage) as project_progress FROM tasks WHERE project_id = ?",
+      [projectId],
+    );
 
-    // ✅ check supervisor belongs to project
-    const [[check]] = await db.query(
+    const [tasks] = await db.query(
       `
-      SELECT * FROM project_supervisors
-      WHERE supervisor_id = ? AND project_id = ?
-      `,
-      [sup.id, projectId]
+      SELECT *
+      FROM tasks
+      WHERE project_id = ?
+      ORDER BY created_at DESC
+    `,
+      [projectId],
     );
 
-    if (!check) {
-      return res.status(403).json({
-        message: "You are not assigned to this project",
+    const result = [];
+
+    for (let t of tasks) {
+      const [workers] = await db.query(
+        `
+        SELECT 
+          w.id,
+          u.name,
+          u.email
+        FROM task_workers tw
+        JOIN workers w ON tw.worker_id = w.id
+        JOIN users u ON w.user_id = u.id
+        WHERE tw.task_id = ?
+      `,
+        [t.id],
+      );
+
+      result.push({
+        task_id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        progress: t.progress_percentage,
+        deadline: t.deadline,
+        total_workers: workers.length,
+        workers: workers,
       });
     }
 
-    // ✅ get reports
-    const [reports] = await db.query(
-      `
-      SELECT 
-        tr.id,
-        tr.task_id,
-        tr.note,
-        tr.status,
-        tr.image,
-        tr.created_at,
-
-        t.title AS task_title,
-        t.project_id,
-
-        u.name AS worker_name
-
-      FROM task_reports tr
-      JOIN tasks t ON tr.task_id = t.id
-      JOIN workers w ON tr.worker_id = w.id
-      JOIN users u ON w.user_id = u.id
-
-      WHERE t.project_id = ?
-      ORDER BY tr.created_at DESC
-      `,
-      [projectId]
-    );
-
-    const result = reports.map((r) => ({
-      id: r.id,
-      project_id: r.project_id,
-      task_id: r.task_id,
-      task_title: r.task_title,
-      worker_name: r.worker_name,
-      note: r.note,
-      status: r.status,
-      image: r.image
-        ? `${baseUrl}/uploads/reports/${r.image}`
-        : null,
-      created_at: r.created_at,
-    }));
-
     res.json({
-      message: "Project reports fetched",
-      project_id: projectId,
-      data: result,
+      message: "Project tasks detail",
+      summary: {
+        total_tasks,
+        project_progress: Math.round(project_progress || 0),
+      },
+      tasks: result,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      message: "Error fetching reports",
+      message: "Error fetching tasks",
     });
   }
 };
@@ -456,41 +440,72 @@ const getAssignedTasks = async (req, res) => {
   }
 };
 
-const getMyTasksController = async (req, res) => {
+const getTaskReportsController = async (req, res) => {
   try {
     const userId = req.user.id;
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
-    const [tasks] = await db.query(
-      `
-      SELECT
-        t.id AS task_id,   -- ✅ IMPORTANT
-        t.title,
-        t.description,
-        t.status,
-        t.progress_percentage,
-        t.deadline,
-        t.created_at,
-        p.id AS project_id,   -- ✅ also useful
-        p.name AS project_name
-      FROM task_workers tw
-      JOIN workers w ON tw.worker_id = w.id
-      JOIN users u ON w.user_id = u.id
-      JOIN tasks t ON tw.task_id = t.id
-      JOIN projects p ON t.project_id = p.id
-      WHERE u.id = ?
-      ORDER BY t.created_at DESC
-    `,
-      [userId],
+    // ✅ get supervisor
+    const [[sup]] = await db.query(
+      "SELECT id FROM supervisors WHERE user_id = ?",
+      [userId]
     );
 
+    if (!sup) {
+      return res.status(404).json({ message: "Supervisor not found" });
+    }
+
+    // ✅ get reports ONLY from supervisor projects
+    const [reports] = await db.query(
+      `
+      SELECT 
+        tr.id,
+        tr.task_id,
+        tr.note,
+        tr.status,
+        tr.image,
+        tr.created_at,
+
+        t.title AS task_title,
+        t.project_id,
+
+        u.name AS worker_name
+
+      FROM task_reports tr
+      JOIN tasks t ON tr.task_id = t.id
+      JOIN workers w ON tr.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      JOIN project_supervisors ps ON ps.project_id = t.project_id
+
+      WHERE ps.supervisor_id = ?
+      ORDER BY tr.created_at DESC
+      `,
+      [sup.id]
+    );
+
+    const result = reports.map((r) => ({
+      id: r.id,
+      project_id: r.project_id,
+      task_id: r.task_id,
+      task_title: r.task_title,
+      worker_name: r.worker_name,
+      note: r.note,
+      status: r.status,
+      image: r.image
+        ? `${baseUrl}/uploads/reports/${r.image}`
+        : null,
+      created_at: r.created_at,
+    }));
+
     res.json({
-      message: "My tasks fetched",
-      data: tasks,
+      message: "Supervisor reports fetched",
+      data: result,
     });
+
   } catch (err) {
-    console.error("GET MY TASKS ERROR:", err);
+    console.error(err);
     res.status(500).json({
-      message: "Error fetching tasks",
+      message: "Error fetching reports",
     });
   }
 };
