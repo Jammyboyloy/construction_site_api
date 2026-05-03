@@ -286,7 +286,7 @@ const removeWorkerFromTaskController = async (req, res) => {
 
 const getTasksByProjectController = async (req, res) => {
   try {
-    const projectId = req.params.project_id;
+    const projectId = req.params.id; // ✅ change here
 
     // ✅ summary
     const [[{ total_tasks }]] = await db.query(
@@ -314,7 +314,7 @@ const getTasksByProjectController = async (req, res) => {
     for (let t of tasks) {
       const [workers] = await db.query(
         `
-        SELECT 
+        SELECT
           w.id,
           u.name,
           u.email
@@ -328,6 +328,7 @@ const getTasksByProjectController = async (req, res) => {
 
       result.push({
         task_id: t.id,
+        project_id: projectId, // ✅ add this (important for frontend)
         title: t.title,
         description: t.description,
         status: t.status,
@@ -340,6 +341,7 @@ const getTasksByProjectController = async (req, res) => {
 
     res.json({
       message: "Project tasks detail",
+      project_id: projectId, // ✅ also here (clean API)
       summary: {
         total_tasks,
         project_progress: Math.round(project_progress || 0),
