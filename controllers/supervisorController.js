@@ -2,41 +2,129 @@ const db = require("../config/db");
 
 const { getAllWithPagination } = require("../utils/pagination");
 
-const getMyTasksController = async (req, res) => {
+const createTasksController = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const { project_id, tasks } = req.body;
+    const supervisorUserId = req.user.id;
 
-    const [tasks] = await db.query(
+    if (!project_id || !tasks || tasks.length === 0) {
+      return res.status(400).json({
+        message: "Project ID and tasks are required",
+      });
+    }
+
+    const createdTasks = [];
+
+    // ✅ CREATE TASKS
+    for (let t of tasks) {
+      const [result] = await db.query(
+        `INSERT INTO tasks (project_id, title, description, deadline, assigned_by, status, progress_percentage)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          project_id,
+          t.title,
+          t.description || null,
+          t.deadline || null,
+          supervisorUserId,
+          "pending",
+          0,
+        ],
+      );
+
+      createdTasks.push({
+        id: result.insertId,
+        title: t.title,
+      });
+    }
+
+    // 🔥 MESSAGE
+    const message = `New tasks created for Project ID ${project_id}`;
+
+    // =========================
+    // 🔥 NOTIFY WORKERS (PROJECT)
+    // =========================
+    const [workers] = await db.query(
       `
-      SELECT
-        t.id AS task_id,   -- ✅ IMPORTANT
-        t.title,
-        t.description,
-        t.status,
-        t.progress_percentage,
-        t.deadline,
-        t.created_at,
-        p.id AS project_id,   -- ✅ also useful
-        p.name AS project_name
-      FROM task_workers tw
-      JOIN workers w ON tw.worker_id = w.id
+      SELECT u.id
+      FROM project_workers pw
+      JOIN workers w ON pw.worker_id = w.id
       JOIN users u ON w.user_id = u.id
-      JOIN tasks t ON tw.task_id = t.id
-      JOIN projects p ON t.project_id = p.id
-      WHERE u.id = ?
-      ORDER BY t.created_at DESC
+      WHERE pw.project_id = ?
     `,
-      [userId],
+      [project_id],
     );
 
+    const { io, users } = require("../server");
+
+    for (let w of workers) {
+      // save DB
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [w.id, message],
+      );
+
+      // realtime
+      if (users[w.id]) {
+        io.to(users[w.id]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // 🔥 NOTIFY CLIENT
+    // =========================
+    const [client] = await db.query(
+      `
+      SELECT u.id
+      FROM projects p
+      JOIN clients c ON p.client_id = c.id
+      JOIN users u ON c.user_id = u.id
+      WHERE p.id = ?
+    `,
+      [project_id],
+    );
+
+    if (client.length > 0) {
+      const clientId = client[0].id;
+
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [clientId, message],
+      );
+
+      if (users[clientId]) {
+        io.to(users[clientId]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // 🔥 NOTIFY ADMINS
+    // =========================
+    const [admins] = await db.query(
+      "SELECT id FROM users WHERE role = 'admin'",
+    );
+
+    for (let a of admins) {
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [a.id, message],
+      );
+
+      if (users[a.id]) {
+        io.to(users[a.id]).emit("notification", { message });
+      }
+    }
+
+    // =========================
+    // ✅ RESPONSE
+    // =========================
     res.json({
-      message: "My tasks fetched",
-      data: tasks,
+      message: "Tasks created successfully",
+      data: createdTasks,
     });
   } catch (err) {
-    console.error("GET MY TASKS ERROR:", err);
+    console.error("CREATE TASKS ERROR:", err);
     res.status(500).json({
-      message: "Error fetching tasks",
+      message: "Error creating tasks",
     });
   }
 };
@@ -368,50 +456,42 @@ const getAssignedTasks = async (req, res) => {
   }
 };
 
-const getTaskReportsController = async (req, res) => {
+const getMyTasksController = async (req, res) => {
   try {
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const userId = req.user.id;
 
-    const [reports] = await db.query(`
-      SELECT tr.*, t.title
-      FROM task_reports tr
-      JOIN tasks t ON tr.task_id = t.id
-      ORDER BY tr.created_at DESC
-    `);
-
-    const result = [];
-
-    for (let r of reports) {
-      const [workers] = await db.query(
-        `
-        SELECT u.name
-        FROM task_workers tw
-        JOIN workers w ON tw.worker_id = w.id
-        JOIN users u ON w.user_id = u.id
-        WHERE tw.task_id = ?
-      `,
-        [r.task_id],
-      );
-
-      result.push({
-        id: r.id,
-        task_id: r.task_id,
-        task_title: r.title,
-        team: workers.map((w) => w.name),
-        image: r.image ? `${baseUrl}/uploads/reports/${r.image}` : null,
-        note: r.note,
-        status: r.status,
-        created_at: r.created_at,
-      });
-    }
+    const [tasks] = await db.query(
+      `
+      SELECT
+        t.id AS task_id,   -- ✅ IMPORTANT
+        t.title,
+        t.description,
+        t.status,
+        t.progress_percentage,
+        t.deadline,
+        t.created_at,
+        p.id AS project_id,   -- ✅ also useful
+        p.name AS project_name
+      FROM task_workers tw
+      JOIN workers w ON tw.worker_id = w.id
+      JOIN users u ON w.user_id = u.id
+      JOIN tasks t ON tw.task_id = t.id
+      JOIN projects p ON t.project_id = p.id
+      WHERE u.id = ?
+      ORDER BY t.created_at DESC
+    `,
+      [userId],
+    );
 
     res.json({
-      message: "Reports fetched",
-      data: result,
+      message: "My tasks fetched",
+      data: tasks,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error fetching reports" });
+    console.error("GET MY TASKS ERROR:", err);
+    res.status(500).json({
+      message: "Error fetching tasks",
+    });
   }
 };
 
