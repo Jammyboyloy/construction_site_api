@@ -43,47 +43,75 @@ const submitTaskReportController = async (req, res) => {
     const { task_id, note } = req.body;
     const userId = req.user.id;
 
-    // ❌ block if still pending
-    const [existing] = await db.query(
-      "SELECT * FROM task_reports WHERE task_id = ? AND status = 'pending'",
-      [task_id]
-    );
-
-    if (existing.length > 0) {
-      return res.status(400).json({
-        message: "Previous report still pending approval",
-      });
-    }
-
     // ✅ get worker
-    const [w] = await db.query(
+    const [[worker]] = await db.query(
       "SELECT id FROM workers WHERE user_id = ?",
       [userId]
     );
 
-    if (w.length === 0) {
+    if (!worker) {
       return res.status(404).json({ message: "Worker not found" });
     }
 
-    const workerId = w[0].id;
+    const workerId = worker.id;
+
+    // ✅ check task + project + assignment
+    const [[taskCheck]] = await db.query(
+      `
+      SELECT 
+        t.id AS task_id,
+        t.project_id
+      FROM tasks t
+      JOIN task_workers tw ON tw.task_id = t.id
+      WHERE t.id = ? AND tw.worker_id = ?
+      `,
+      [task_id, workerId]
+    );
+
+    if (!taskCheck) {
+      return res.status(400).json({
+        message: "Task not found or you are not assigned to this task",
+      });
+    }
+
+    // ✅ prevent duplicate pending (PER WORKER)
+    const [existing] = await db.query(
+      `
+      SELECT * 
+      FROM task_reports 
+      WHERE task_id = ? AND worker_id = ? AND status = 'pending'
+      `,
+      [task_id, workerId]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        message: "Your previous report is still pending",
+      });
+    }
+
     const image = req.file ? req.file.filename : null;
 
-    // ✅ insert report
+    // ✅ insert
     const [result] = await db.query(
-      `INSERT INTO task_reports (task_id, worker_id, image, note)
-       VALUES (?, ?, ?, ?)`,
+      `
+      INSERT INTO task_reports (task_id, worker_id, image, note)
+      VALUES (?, ?, ?, ?)
+      `,
       [task_id, workerId, image, note]
     );
 
-    // 🔥 notify supervisor
-    const [supers] = await db.query(`
+    // 🔥 notify supervisor (ONLY project related)
+    const [supers] = await db.query(
+      `
       SELECT u.id
       FROM project_supervisors ps
       JOIN supervisors s ON ps.supervisor_id = s.id
       JOIN users u ON s.user_id = u.id
-      JOIN tasks t ON t.project_id = ps.project_id
-      WHERE t.id = ?
-    `, [task_id]);
+      WHERE ps.project_id = ?
+      `,
+      [taskCheck.project_id] // ✅ correct project
+    );
 
     const { io, users } = require("../server");
     const message = "New task report submitted";
@@ -100,8 +128,9 @@ const submitTaskReportController = async (req, res) => {
     }
 
     res.json({
-      message: "Report submitted",
-      report_id: result.insertId
+      message: "Report submitted successfully",
+      report_id: result.insertId,
+      project_id: taskCheck.project_id, // ✅ now clear
     });
 
   } catch (err) {
