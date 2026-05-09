@@ -7,30 +7,48 @@ const getMyTasksController = async (req, res) => {
     const [tasks] = await db.query(
       `
       SELECT
-        t.id AS task_id,   -- ✅ IMPORTANT
+        t.id AS task_id,
         t.title,
         t.description,
-        t.status,
+
+        t.status AS task_status,              -- ✅ from tasks
+        tr.status AS report_status,           -- ✅ from task_reports
+
         t.progress_percentage,
         t.deadline,
         t.created_at,
-        p.id AS project_id,   -- ✅ also useful
+
+        p.id AS project_id,
         p.name AS project_name
+
       FROM task_workers tw
       JOIN workers w ON tw.worker_id = w.id
       JOIN users u ON w.user_id = u.id
       JOIN tasks t ON tw.task_id = t.id
       JOIN projects p ON t.project_id = p.id
+
+      -- 🔥 latest report per worker + task
+      LEFT JOIN task_reports tr 
+        ON tr.id = (
+          SELECT tr2.id
+          FROM task_reports tr2
+          WHERE tr2.task_id = t.id 
+            AND tr2.worker_id = w.id
+          ORDER BY tr2.created_at DESC
+          LIMIT 1
+        )
+
       WHERE u.id = ?
       ORDER BY t.created_at DESC
-    `,
-      [userId],
+      `,
+      [userId]
     );
 
     res.json({
       message: "My tasks fetched",
       data: tasks,
     });
+
   } catch (err) {
     console.error("GET MY TASKS ERROR:", err);
     res.status(500).json({

@@ -5,29 +5,36 @@ const generateQRController = async (req, res) => {
   try {
     const { project_id } = req.body;
 
-    // 🔥 create random token
+    // 🔥 create token
     const token = Math.random().toString(36).substring(2);
 
-    // 🔥 save token (expire in 10 min)
+    // 🔥 expire time (10 min)
+    const expireAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    // save
     await db.query(
       `INSERT INTO qr_tokens (project_id, token, expire_at)
-       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-      [project_id, token]
+       VALUES (?, ?, ?)`,
+      [project_id, token, expireAt]
     );
 
-    // 🔥 data inside QR
+    // QR data
     const qrData = JSON.stringify({
       project_id,
       token
     });
 
-    // 🔥 generate QR image (base64)
     const qrImage = await QRCode.toDataURL(qrData);
 
     res.json({
       message: "QR generated",
-      qr_data: { project_id, token }, // for testing
-      qr_image: qrImage               // for frontend
+      qr_data: { project_id, token },
+
+      // 🔥 important for frontend
+      expire_at: expireAt,
+      expires_in: 600, // seconds (10 min)
+
+      qr_image: qrImage
     });
 
   } catch (err) {

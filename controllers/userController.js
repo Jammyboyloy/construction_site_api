@@ -1,4 +1,10 @@
 const db = require("../config/db");
+const bcrypt = require("bcryptjs");
+const {
+  changePasswordSchema,
+  resetPasswordSchema,
+} = require("../validators/authValidate");
+const { sendOtpEmail } = require("../services/mailService");
 
 // ✅ Upload / Update avatar
 const updateAvatar = async (req, res) => {
@@ -81,6 +87,7 @@ const getMyNotifications = async (req, res) => {
       FROM notifications
       WHERE user_id = ?
       ORDER BY created_at DESC
+      limit 5
     `,
       [userId],
     );
@@ -153,7 +160,7 @@ const getMyProjectsController = async (req, res) => {
     if (role === "client") {
       const [[client]] = await db.query(
         "SELECT id FROM clients WHERE user_id = ?",
-        [userId]
+        [userId],
       );
 
       if (!client) {
@@ -168,7 +175,7 @@ const getMyProjectsController = async (req, res) => {
     else if (role === "supervisor") {
       const [[sup]] = await db.query(
         "SELECT id FROM supervisors WHERE user_id = ?",
-        [userId]
+        [userId],
       );
 
       if (!sup) {
@@ -186,7 +193,7 @@ const getMyProjectsController = async (req, res) => {
     else if (role === "worker") {
       const [[worker]] = await db.query(
         "SELECT id FROM workers WHERE user_id = ?",
-        [userId]
+        [userId],
       );
 
       if (!worker) {
@@ -224,7 +231,7 @@ const getMyProjectsController = async (req, res) => {
 
       ${projectQuery}
       `,
-      params
+      params,
     );
 
     const finalData = [];
@@ -237,9 +244,7 @@ const getMyProjectsController = async (req, res) => {
       delete p.created_by_name;
 
       // client
-      p.client = p.client_id
-        ? { id: p.client_id, name: p.client_name }
-        : null;
+      p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
       delete p.client_id;
       delete p.client_name;
 
@@ -264,7 +269,7 @@ const getMyProjectsController = async (req, res) => {
         JOIN users u ON w.user_id = u.id
         WHERE pw.project_id = ?
         `,
-        [p.id]
+        [p.id],
       );
 
       p.workers = workers;
@@ -280,7 +285,6 @@ const getMyProjectsController = async (req, res) => {
       message: "My projects fetched successfully",
       data: finalData,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -289,11 +293,247 @@ const getMyProjectsController = async (req, res) => {
   }
 };
 
+const changePasswordController = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // ✅ validate first
+    const { error, value } = changePasswordSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
+    const { current_password, new_password } = value;
+
+    // ✅ get current password from DB
+    const [[user]] = await db.query("SELECT password FROM users WHERE id = ?", [
+      userId,
+    ]);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // ✅ check current password
+    const isMatch = bcrypt.compareSync(current_password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Current password is incorrect",
+      });
+    }
+
+    // ✅ hash new password
+    const hashedPassword = bcrypt.hashSync(new_password, 10);
+
+    // ✅ update
+    await db.query("UPDATE users SET password = ? WHERE id = ?", [
+      hashedPassword,
+      userId,
+    ]);
+
+    res.json({
+      message: "Password changed successfully",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Error changing password",
+    });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const [user] = await db.query("SELECT id FROM users WHERE email = ?", [
+      email,
+    ]);
+
+    // 🔒 don't reveal email exist or not
+    if (user.length === 0) {
+      return res.json({ message: "If email exists, OTP sent" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expire = new Date(Date.now() + 10 * 60 * 1000);
+
+    // remove old
+    await db.query("DELETE FROM password_resets WHERE email = ?", [email]);
+
+    // insert new
+    await db.query(
+      "INSERT INTO password_resets (email, otp, expire_at) VALUES (?, ?, ?)",
+      [email, otp, expire],
+    );
+
+    // 🔥 use service here
+    await sendOtpEmail(email, otp);
+
+    res.json({ message: "If email exists, OTP sent" });
+  } catch (err) {
+    console.error("FORGOT PASSWORD ERROR:", err);
+    res.status(500).json({
+      message: "Error sending OTP",
+    });
+  }
+};
+
+const verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const [rows] = await db.query(
+      "SELECT * FROM password_resets WHERE email = ? AND otp = ?",
+      [email, otp],
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    const record = rows[0];
+
+    // ✅ check expire first
+    if (new Date() > new Date(record.expire_at)) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    // ✅ mark verified
+    await db.query(
+      "UPDATE password_resets SET verified = TRUE WHERE email = ?",
+      [email],
+    );
+
+    // 🔥 OPTIONAL (better UX for frontend)
+    res.json({
+      message: "OTP verified",
+      email: email, // frontend can reuse
+    });
+  } catch (err) {
+    console.error("VERIFY OTP ERROR:", err);
+    res.status(500).json({
+      message: "Error verifying OTP",
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { new_password, confirm_password } = req.body;
+
+    // ✅ get email from previous step (middleware / token / session)
+    const email = req.user?.email || req.body.email; // adjust if you use token
+
+    // ✅ Joi validate
+    const { error } = resetPasswordSchema.validate({
+      new_password,
+      confirm_password,
+    });
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
+    // ✅ check OTP verified
+    const [rows] = await db.query(
+      "SELECT * FROM password_resets WHERE email = ? AND verified = TRUE",
+      [email],
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        message: "OTP not verified",
+      });
+    }
+
+    // ✅ hash password
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    // ✅ update password
+    await db.query("UPDATE users SET password = ? WHERE email = ?", [
+      hashedPassword,
+      email,
+    ]);
+
+    // ✅ cleanup
+    await db.query("DELETE FROM password_resets WHERE email = ?", [email]);
+
+    res.json({
+      message: "Password reset successful",
+    });
+  } catch (err) {
+    console.error("RESET PASSWORD ERROR:", err);
+    res.status(500).json({
+      message: "Error resetting password",
+    });
+  }
+};
+
+const resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const [user] = await db.query(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
+    );
+
+    // 🔒 don't reveal
+    if (user.length === 0) {
+      return res.json({ message: "If email exists, OTP sent" });
+    }
+
+    // 🔥 generate new OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expire = new Date(Date.now() + 10 * 60 * 1000);
+
+    // delete old
+    await db.query(
+      "DELETE FROM password_resets WHERE email = ?",
+      [email]
+    );
+
+    // insert new
+    await db.query(
+      "INSERT INTO password_resets (email, otp, expire_at, verified) VALUES (?, ?, ?, FALSE)",
+      [email, otp, expire]
+    );
+
+    // send email
+    await sendOtpEmail(email, otp);
+
+    res.json({
+      message: "OTP resent successfully",
+    });
+
+  } catch (err) {
+    console.error("RESEND OTP ERROR:", err);
+    res.status(500).json({
+      message: "Error resending OTP",
+    });
+  }
+};
+
+
 module.exports = {
   updateAvatar,
   resetAvatar,
   getMyNotifications,
   markAllNotificationsRead,
   getUnreadCount,
-  getMyProjectsController
+  getMyProjectsController,
+  changePasswordController,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
+  resendOtp
 };
