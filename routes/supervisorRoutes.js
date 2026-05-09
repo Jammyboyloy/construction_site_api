@@ -84,7 +84,6 @@ router.delete(
 router.get(
   "/projects/:id/workers",
   verifyToken,
-  checkRole("supervisor"),
   getProjectWorkersController,
 );
 

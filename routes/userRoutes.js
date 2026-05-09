@@ -9,7 +9,12 @@ const {
   getMyNotifications,
   markAllNotificationsRead,
   getUnreadCount,
-  getMyProjectsController
+  getMyProjectsController,
+  changePasswordController,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
+  resendOtp
 } = require("../controllers/userController");
 
 // ✅ upload / update avatar
@@ -25,5 +30,15 @@ router.put("/notifications/read-all", verifyToken, markAllNotificationsRead);
 router.get("/notifications/unread-count", verifyToken, getUnreadCount);
 
 router.get("/my-projects", verifyToken, getMyProjectsController);
+
+router.post("/change-password", verifyToken, changePasswordController);
+
+router.post("/forgot-password", forgotPassword);
+
+router.post("/verify-otp", verifyOtp);
+
+router.post("/reset-password", resetPassword);
+
+router.post("/resend-otp", resendOtp);
 
 module.exports = router;

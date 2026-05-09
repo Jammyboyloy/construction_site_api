@@ -22,17 +22,13 @@ const {
 
 const { getAllWithPagination } = require("../utils/pagination");
 const { buildSearchWhere } = require("../utils/search");
+const { sendAccountEmail } = require("../services/mailService");
 
 const createSupervisorAccount = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
 
-    const errors = validateSupervisor({
-      name,
-      email,
-      password,
-      phone,
-    });
+    const errors = validateSupervisor({ name, email, password, phone });
 
     if (errors.length > 0) {
       return res.status(400).json({ message: errors });
@@ -52,11 +48,13 @@ const createSupervisorAccount = async (req, res) => {
       email,
       hashedPassword,
       phone || null,
-      "supervisor"
+      "supervisor",
     );
 
-    // ✅ FIX HERE
     await createSupervisor(userId, null);
+
+    // 🔥 SEND EMAIL (IMPORTANT)
+    await sendAccountEmail(email, password, "supervisor");
 
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
@@ -217,8 +215,11 @@ const createWorkerAccount = async (req, res) => {
       "worker",
     );
 
-    // 🔥 no hired_date now
+    // create worker
     await createWorker(userId, skill_type, null);
+
+    // 🔥 SEND EMAIL HERE
+    await sendAccountEmail(email, password, "worker");
 
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
@@ -320,7 +321,7 @@ const getWorkerById = async (req, res) => {
       JOIN users u ON w.user_id = u.id
       WHERE w.id = ?
       `,
-      [workerId]
+      [workerId],
     );
 
     if (!worker) {
@@ -348,13 +349,7 @@ const getWorkerById = async (req, res) => {
 
 const createClientAccount = async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      password,
-      phone,
-      address, 
-    } = req.body;
+    const { name, email, password, phone, address } = req.body;
 
     const errors = validateClient({
       name,
@@ -384,11 +379,18 @@ const createClientAccount = async (req, res) => {
       email,
       hashedPassword,
       phone || null,
-      "client"
+      "client",
     );
 
-    // ✅ set null
+    // ✅ create client (null fields)
     await createClient(userId, null, null, address || null);
+
+    // 🔥 SEND EMAIL
+    try {
+      await sendAccountEmail(email, password, "client");
+    } catch (mailErr) {
+      console.error("Email failed:", mailErr);
+    }
 
     const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
@@ -636,6 +638,8 @@ const resetProjectThumbnail = async (req, res) => {
 
 const getAllProjectsController = async (req, res) => {
   try {
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+
     const result = await getAllWithPagination({
       baseQuery: `
         SELECT
@@ -643,15 +647,27 @@ const getAllProjectsController = async (req, res) => {
 
           -- 👤 creator
           cu.name AS created_by_name,
+          cu.avatar AS created_by_avatar,
 
           -- 🏢 client
           c.id AS client_id,
           cu2.name AS client_name,
+          cu2.avatar AS client_avatar,
 
           -- 👷 supervisor
           su.name AS supervisor_name,
           su.email AS supervisor_email,
-          ps.assigned_at AS supervisor_assigned_at
+          su.avatar AS supervisor_avatar,
+          ps.assigned_at AS supervisor_assigned_at,
+
+          -- 🔥 PROJECT PROGRESS
+          ROUND(
+            (
+              SELECT COALESCE(AVG(t.progress_percentage), 0)
+              FROM tasks t
+              WHERE t.project_id = p.id
+            ), 0
+          ) AS project_progress
 
         FROM projects p
 
@@ -687,29 +703,48 @@ const getAllProjectsController = async (req, res) => {
     for (let p of projects) {
       // ✅ creator
       p.created_by = p.created_by
-        ? { id: p.created_by, name: p.created_by_name }
+        ? {
+            id: p.created_by,
+            name: p.created_by_name,
+            avatar: p.created_by_avatar
+              ? `${baseUrl}/uploads/avatars/${p.created_by_avatar}`
+              : null,
+          }
         : null;
 
       delete p.created_by_name;
+      delete p.created_by_avatar;
 
       // ✅ client
-      p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
+      p.client = p.client_id
+        ? {
+            id: p.client_id,
+            name: p.client_name,
+            avatar: p.client_avatar
+              ? `${baseUrl}/uploads/avatars/${p.client_avatar}`
+              : null,
+          }
+        : null;
 
-      // ❌ REMOVE from root (THIS is what you want)
       delete p.client_id;
       delete p.client_name;
+      delete p.client_avatar;
 
       // ✅ supervisor
       p.supervisor = p.supervisor_name
         ? {
             name: p.supervisor_name,
             email: p.supervisor_email,
+            avatar: p.supervisor_avatar
+              ? `${baseUrl}/uploads/avatars/${p.supervisor_avatar}`
+              : null,
             assigned_at: p.supervisor_assigned_at,
           }
         : null;
 
       delete p.supervisor_name;
       delete p.supervisor_email;
+      delete p.supervisor_avatar;
       delete p.supervisor_assigned_at;
 
       // ✅ workers
@@ -720,6 +755,7 @@ const getAllProjectsController = async (req, res) => {
           u.name,
           u.email,
           u.status,
+          u.avatar,
           pw.assigned_at
         FROM project_workers pw
         JOIN workers w ON pw.worker_id = w.id
@@ -729,11 +765,15 @@ const getAllProjectsController = async (req, res) => {
         [p.id],
       );
 
-      p.workers = workers;
-      p.worker_count = workers.length;
+      p.workers = workers.map((w) => ({
+        ...w,
+        avatar: w.avatar ? `${baseUrl}/uploads/avatars/${w.avatar}` : null,
+      }));
+
+      p.worker_count = p.workers.length;
 
       // ✅ thumbnail
-      p.thumbnail = `https://construction-site-api-3uii.onrender.com/uploads/projects/${p.thumbnail}`;
+      p.thumbnail = `${baseUrl}/uploads/projects/${p.thumbnail}`;
     }
 
     res.json({
@@ -743,7 +783,7 @@ const getAllProjectsController = async (req, res) => {
       pagination: result.pagination,
     });
   } catch (err) {
-    console.error(err);
+    console.error("GET PROJECT ERROR:", err);
     res.status(500).json({
       result: false,
       message: "Error fetching projects",
@@ -754,20 +794,37 @@ const getAllProjectsController = async (req, res) => {
 const getProjectByIdController = async (req, res) => {
   try {
     const projectId = req.params.id;
+    const baseUrl = "https://construction-site-api-3uii.onrender.com";
 
     const [[p]] = await db.query(
       `
       SELECT
         p.*,
 
+        -- 👤 creator
         cu.name AS created_by_name,
+        cu.avatar AS created_by_avatar,
 
+        -- 🏢 client
         c.id AS client_id,
         cu2.name AS client_name,
+        cu2.avatar AS client_avatar,
 
+        -- 👷 supervisor
+        ps.supervisor_id, 
         su.name AS supervisor_name,
         su.email AS supervisor_email,
-        ps.assigned_at AS supervisor_assigned_at
+        su.avatar AS supervisor_avatar,
+        ps.assigned_at AS supervisor_assigned_at,
+
+        -- 🔥 PROJECT PROGRESS
+        ROUND(
+          (
+            SELECT COALESCE(AVG(t.progress_percentage), 0)
+            FROM tasks t
+            WHERE t.project_id = p.id
+          ), 0
+        ) AS project_progress
 
       FROM projects p
 
@@ -782,7 +839,7 @@ const getProjectByIdController = async (req, res) => {
 
       WHERE p.id = ?
       `,
-      [projectId],
+      [projectId]
     );
 
     if (!p) {
@@ -793,52 +850,84 @@ const getProjectByIdController = async (req, res) => {
 
     // ✅ creator
     p.created_by = p.created_by
-      ? { id: p.created_by, name: p.created_by_name }
+      ? {
+          id: p.created_by,
+          name: p.created_by_name,
+          avatar: p.created_by_avatar
+            ? `${baseUrl}/uploads/avatars/${p.created_by_avatar}`
+            : null,
+        }
       : null;
 
     delete p.created_by_name;
+    delete p.created_by_avatar;
 
     // ✅ client
-    p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
+    p.client = p.client_id
+      ? {
+          id: p.client_id,
+          name: p.client_name,
+          avatar: p.client_avatar
+            ? `${baseUrl}/uploads/avatars/${p.client_avatar}`
+            : null,
+        }
+      : null;
 
     delete p.client_id;
     delete p.client_name;
+    delete p.client_avatar;
 
-    // ✅ supervisor
+    // ✅ supervisor (WITH ID)
     p.supervisor = p.supervisor_name
       ? {
+          supervisor_id: p.supervisor_id,
           name: p.supervisor_name,
           email: p.supervisor_email,
+          avatar: p.supervisor_avatar
+            ? `${baseUrl}/uploads/avatars/${p.supervisor_avatar}`
+            : null,
           assigned_at: p.supervisor_assigned_at,
         }
       : null;
 
+    delete p.supervisor_id;
     delete p.supervisor_name;
     delete p.supervisor_email;
+    delete p.supervisor_avatar;
     delete p.supervisor_assigned_at;
 
-    // ✅ workers
+    // ✅ workers (WITH worker_id)
     const [workers] = await db.query(
       `
       SELECT
-        w.id,
+        w.id AS worker_id, 
         u.name,
         u.email,
         u.status,
+        u.avatar,
         pw.assigned_at
       FROM project_workers pw
       JOIN workers w ON pw.worker_id = w.id
       JOIN users u ON w.user_id = u.id
       WHERE pw.project_id = ?
       `,
-      [p.id],
+      [p.id]
     );
 
-    p.workers = workers;
-    p.worker_count = workers.length;
+    p.workers = workers.map((w) => ({
+      worker_id: w.worker_id,
+      name: w.name,
+      email: w.email,
+      status: w.status,
+      assigned_at: w.assigned_at,
+      avatar: w.avatar
+        ? `${baseUrl}/uploads/avatars/${w.avatar}`
+        : null,
+    }));
+
+    p.worker_count = p.workers.length;
 
     // ✅ thumbnail
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
     p.thumbnail = `${baseUrl}/uploads/projects/${p.thumbnail}`;
 
     res.json({
@@ -846,7 +935,7 @@ const getProjectByIdController = async (req, res) => {
       data: p,
     });
   } catch (err) {
-    console.error(err);
+    console.error("GET PROJECT BY ID ERROR:", err);
     res.status(500).json({
       message: "Error fetching project",
     });
@@ -906,7 +995,7 @@ const getAvailableSupervisors = async (req, res) => {
     const [rows] = await db.query(
       `
       SELECT 
-        s.id,
+        s.id as supervisor_id,
         u.name,
         u.email,
         u.avatar
@@ -1043,7 +1132,7 @@ const getAvailableWorkers = async (req, res) => {
     const [rows] = await db.query(
       `
       SELECT
-        w.id,
+        w.id as worker_id,
         u.name,
         u.email,
         u.avatar,
