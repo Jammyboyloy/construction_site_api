@@ -56,7 +56,7 @@ const createSupervisorAccount = async (req, res) => {
     // 🔥 SEND EMAIL (IMPORTANT)
     await sendAccountEmail(email, password, "supervisor");
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Supervisor created successfully",
@@ -120,7 +120,7 @@ const getAllSupervisors = async (req, res) => {
       message: "Get All Supervisors Successfully",
       data: result.data.map((u) => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`,
       })),
       pagination: result.pagination,
     });
@@ -163,7 +163,7 @@ const getSupervisorById = async (req, res) => {
       });
     }
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Get Supervisor Successfully",
@@ -221,7 +221,7 @@ const createWorkerAccount = async (req, res) => {
     // 🔥 SEND EMAIL HERE
     await sendAccountEmail(email, password, "worker");
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Worker created successfully",
@@ -286,7 +286,7 @@ const getAllWorkers = async (req, res) => {
       message: "Get All Workers Successfully",
       data: result.data.map((u) => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`,
       })),
       pagination: result.pagination,
     });
@@ -330,7 +330,7 @@ const getWorkerById = async (req, res) => {
       });
     }
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Get Worker Successfully",
@@ -392,7 +392,7 @@ const createClientAccount = async (req, res) => {
       console.error("Email failed:", mailErr);
     }
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     return res.json({
       message: "Client created successfully",
@@ -458,7 +458,7 @@ const getAllClients = async (req, res) => {
       message: "Get All Clients Successfully",
       data: result.data.map((u) => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`,
       })),
       pagination: result.pagination,
     });
@@ -502,7 +502,7 @@ const getClientById = async (req, res) => {
       });
     }
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Get Client Successfully",
@@ -556,7 +556,7 @@ const createProjectController = async (req, res) => {
         location,
         client_id,
         status: "planning",
-        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/default-project.png`,
+        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
       },
     });
   } catch (err) {
@@ -588,13 +588,46 @@ const updateProjectThumbnail = async (req, res) => {
       message: "Thumbnail updated successfully",
       data: {
         project_id: projectId,
-        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/${filename}`,
+        thumbnail: `http://localhost:3000/uploads/projects/${filename}`,
       },
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({
       message: "Error updating thumbnail",
+    });
+  }
+};
+
+const deleteProjectController = async (req, res) => {
+  try {
+    const projectId = req.params.id;
+
+    // ✅ check exist
+    const [[project]] = await db.query(
+      `SELECT id FROM projects WHERE id = ?`,
+      [projectId]
+    );
+
+    if (!project) {
+      return res.status(404).json({
+        message: "Project not found",
+      });
+    }
+
+    await db.query(
+      `DELETE FROM projects WHERE id = ?`,
+      [projectId]
+    );
+
+    return res.json({
+      message: "Project deleted successfully",
+    });
+
+  } catch (err) {
+    console.error("DELETE PROJECT ERROR:", err);
+    res.status(500).json({
+      message: "Error deleting project",
     });
   }
 };
@@ -625,7 +658,7 @@ const resetProjectThumbnail = async (req, res) => {
       message: "Thumbnail reset to default",
       data: {
         project_id: projectId,
-        thumbnail: `https://construction-site-api-3uii.onrender.com/uploads/projects/default-project.png`,
+        thumbnail: `http://localhost:3000/uploads/projects/default-project.png`,
       },
     });
   } catch (err) {
@@ -638,7 +671,7 @@ const resetProjectThumbnail = async (req, res) => {
 
 const getAllProjectsController = async (req, res) => {
   try {
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     const result = await getAllWithPagination({
       baseQuery: `
@@ -718,7 +751,7 @@ const getAllProjectsController = async (req, res) => {
       // ✅ client
       p.client = p.client_id
         ? {
-            id: p.client_id,
+            client_id: p.client_id,
             name: p.client_name,
             avatar: p.client_avatar
               ? `${baseUrl}/uploads/avatars/${p.client_avatar}`
@@ -794,7 +827,7 @@ const getAllProjectsController = async (req, res) => {
 const getProjectByIdController = async (req, res) => {
   try {
     const projectId = req.params.id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     const [[p]] = await db.query(
       `
@@ -865,7 +898,7 @@ const getProjectByIdController = async (req, res) => {
     // ✅ client
     p.client = p.client_id
       ? {
-          id: p.client_id,
+          client_id: p.client_id,
           name: p.client_name,
           avatar: p.client_avatar
             ? `${baseUrl}/uploads/avatars/${p.client_avatar}`
@@ -1016,7 +1049,7 @@ const getAvailableSupervisors = async (req, res) => {
       message: "Available supervisors",
       data: rows.map((u) => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`,
       })),
     });
   } catch (err) {
@@ -1154,7 +1187,7 @@ const getAvailableWorkers = async (req, res) => {
       message: "Available workers",
       data: rows.map((u) => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`,
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`,
       })),
     });
   } catch (err) {
@@ -1168,20 +1201,51 @@ const getAvailableWorkers = async (req, res) => {
 const assignWorkersController = async (req, res) => {
   try {
     const projectId = req.params.id;
-    const { worker_ids } = req.body;
+    const rawWorkerIds = req.body.worker_ids ?? req.body.worker_id;
+    const worker_ids = Array.isArray(rawWorkerIds)
+      ? rawWorkerIds
+      : rawWorkerIds
+      ? [rawWorkerIds]
+      : [];
 
-    if (!worker_ids || worker_ids.length === 0) {
+    const normalizedWorkerIds = [
+      ...new Set(
+        worker_ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+
+    if (normalizedWorkerIds.length === 0) {
       return res.status(400).json({
         message: "Worker IDs required",
       });
     }
 
-    // 🔥 CHECK FIRST (IMPORTANT)
+    const [workers] = await db.query(
+      `SELECT id AS worker_id, user_id
+       FROM workers
+       WHERE id IN (?)`,
+      [normalizedWorkerIds],
+    );
+
+    if (workers.length !== normalizedWorkerIds.length) {
+      const validIds = workers.map((w) => w.worker_id);
+
+      return res.status(404).json({
+        message: "Some workers not found",
+        invalid_workers: normalizedWorkerIds.filter(
+          (id) => !validIds.includes(id),
+        ),
+      });
+    }
+
+    // 🔥 CHECK duplicate
     const [existing] = await db.query(
-      `SELECT worker_id FROM project_workers 
-       WHERE project_id = ? 
+      `SELECT worker_id FROM project_workers
+       WHERE project_id = ?
        AND worker_id IN (?)`,
-      [projectId, worker_ids],
+      [projectId, normalizedWorkerIds]
     );
 
     if (existing.length > 0) {
@@ -1191,30 +1255,39 @@ const assignWorkersController = async (req, res) => {
       });
     }
 
-    // ✅ INSERT if all clean
-    for (let worker_id of worker_ids) {
+    // ✅ socket
+    const { io, users } = require("../server");
+
+    // ✅ INSERT + REALTIME
+    for (let worker of workers) {
       await db.query(
         "INSERT INTO project_workers (project_id, worker_id) VALUES (?, ?)",
-        [projectId, worker_id],
+        [projectId, worker.worker_id]
       );
 
-      const [w] = await db.query("SELECT user_id FROM workers WHERE id = ?", [
-        worker_id,
-      ]);
+      const userId = worker.user_id;
+      const message = `You are assigned to project ID ${projectId}`;
 
-      if (w.length > 0) {
-        const userId = w[0].user_id;
-        const message = `You are assigned to project ID ${projectId}`;
+      // 💾 save notification
+      await db.query(
+        "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+        [userId, message]
+      );
 
-        await db.query(
-          "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
-          [userId, message],
-        );
-      }
+      // 🔥 REALTIME EMIT
+      try {
+        if (users && users[userId]) {
+          io.to(users[userId]).emit("notification", { message });
+        }
+      } catch (e) {}
     }
 
     res.json({
       message: "Workers assigned successfully",
+      data: {
+        project_id: Number(projectId),
+        worker_ids: normalizedWorkerIds,
+      },
     });
   } catch (err) {
     console.error("ASSIGN WORKERS ERROR:", err);
@@ -1441,6 +1514,7 @@ module.exports = {
   getAllClients,
   createProjectController,
   updateProjectThumbnail,
+  deleteProjectController,
   resetProjectThumbnail,
   getAllProjectsController,
   updateProjectController,

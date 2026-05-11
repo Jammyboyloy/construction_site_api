@@ -39,7 +39,7 @@ const updateMaterialImageController = async (req, res) => {
       materialId,
     ]);
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Material image updated",
@@ -78,7 +78,7 @@ const resetMaterialImageController = async (req, res) => {
       materialId,
     ]);
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Material image reset to default",
@@ -129,7 +129,7 @@ const addMaterialController = async (req, res) => {
       ],
     );
 
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     res.json({
       message: "Material added successfully",
@@ -154,7 +154,7 @@ const addMaterialController = async (req, res) => {
 const getMaterialsByProjectController = async (req, res) => {
   try {
     const projectId = req.params.project_id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     const result = await getAllWithPagination({
       baseQuery: `
@@ -211,7 +211,7 @@ const getMaterialsByProjectController = async (req, res) => {
 const getMaterialByIdController = async (req, res) => {
   try {
     const materialId = req.params.id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     const [[m]] = await db.query(
       `

@@ -72,7 +72,7 @@ exports.login = async (req, res) => {
     );
 
     // ✅ base URL
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     return res.json({
       message: "Login success",
@@ -184,7 +184,7 @@ exports.getMe = async (req, res) => {
     const user = rows[0];
 
     const baseUrl =
-      "https://construction-site-api-3uii.onrender.com/uploads/avatars";
+      "http://localhost:3000/uploads/avatars";
 
     return res.json({
       message: "User profile fetched",

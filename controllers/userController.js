@@ -26,7 +26,7 @@ const updateAvatar = async (req, res) => {
 
     return res.json({
       message: "Avatar updated",
-      avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${avatar}`,
+      avatar: `http://localhost:3000/uploads/avatars/${avatar}`,
     });
   } catch (err) {
     console.error(err);
@@ -67,7 +67,7 @@ const resetAvatar = async (req, res) => {
 
     return res.json({
       message: "Avatar reset to default",
-      avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/default-avatar.png`,
+      avatar: `http://localhost:3000/uploads/avatars/default-avatar.png`,
     });
   } catch (err) {
     console.error(err);
@@ -151,7 +151,7 @@ const getMyProjectsController = async (req, res) => {
   try {
     const userId = req.user.id;
     const role = req.user.role;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     let projectQuery = "";
     let params = [];
@@ -160,7 +160,7 @@ const getMyProjectsController = async (req, res) => {
     if (role === "client") {
       const [[client]] = await db.query(
         "SELECT id FROM clients WHERE user_id = ?",
-        [userId],
+        [userId]
       );
 
       if (!client) {
@@ -175,7 +175,7 @@ const getMyProjectsController = async (req, res) => {
     else if (role === "supervisor") {
       const [[sup]] = await db.query(
         "SELECT id FROM supervisors WHERE user_id = ?",
-        [userId],
+        [userId]
       );
 
       if (!sup) {
@@ -193,7 +193,7 @@ const getMyProjectsController = async (req, res) => {
     else if (role === "worker") {
       const [[worker]] = await db.query(
         "SELECT id FROM workers WHERE user_id = ?",
-        [userId],
+        [userId]
       );
 
       if (!worker) {
@@ -207,21 +207,40 @@ const getMyProjectsController = async (req, res) => {
       params = [worker.id];
     }
 
-    // 🔥 QUERY
+    // 🔥 MAIN QUERY
     const [projects] = await db.query(
       `
       SELECT
         p.*,
+
+        -- 👤 creator
         cu.name AS created_by_name,
+
+        -- 🏢 client
         c.id AS client_id,
         cu2.name AS client_name,
+        cu2.avatar AS client_avatar,
+
+        -- 👷 supervisor
+        ps.supervisor_id,
         su.name AS supervisor_name,
         su.email AS supervisor_email,
-        ps.assigned_at AS supervisor_assigned_at
+        su.avatar AS supervisor_avatar,
+        ps.assigned_at AS supervisor_assigned_at,
+
+        -- 🔥 PROJECT PROGRESS
+        ROUND(
+          (
+            SELECT COALESCE(AVG(t.progress_percentage), 0)
+            FROM tasks t
+            WHERE t.project_id = p.id
+          ), 0
+        ) AS project_progress
 
       FROM projects p
 
       LEFT JOIN users cu ON p.created_by = cu.id
+
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN users cu2 ON c.user_id = cu2.id
 
@@ -231,51 +250,85 @@ const getMyProjectsController = async (req, res) => {
 
       ${projectQuery}
       `,
-      params,
+      params
     );
 
     const finalData = [];
 
     for (let p of projects) {
-      // creator
+      // ✅ creator
       p.created_by = p.created_by
         ? { id: p.created_by, name: p.created_by_name }
         : null;
       delete p.created_by_name;
 
-      // client
-      p.client = p.client_id ? { id: p.client_id, name: p.client_name } : null;
+      // ✅ client
+      p.client = p.client_id
+        ? {
+            client_id: p.client_id,
+            name: p.client_name,
+            avatar: p.client_avatar
+              ? `${baseUrl}/uploads/avatars/${p.client_avatar}`
+              : null,
+          }
+        : null;
       delete p.client_id;
       delete p.client_name;
+      delete p.client_avatar;
 
-      // supervisor
+      // ✅ supervisor
       p.supervisor = p.supervisor_name
         ? {
+            supervisor_id: p.supervisor_id,
             name: p.supervisor_name,
             email: p.supervisor_email,
+            avatar: p.supervisor_avatar
+              ? `${baseUrl}/uploads/avatars/${p.supervisor_avatar}`
+              : null,
             assigned_at: p.supervisor_assigned_at,
           }
         : null;
+      delete p.supervisor_id;
       delete p.supervisor_name;
       delete p.supervisor_email;
+      delete p.supervisor_avatar;
       delete p.supervisor_assigned_at;
 
-      // workers
+      // ✅ workers
       const [workers] = await db.query(
         `
-        SELECT w.id, u.name, u.email, u.status, pw.assigned_at
+        SELECT
+          w.id AS worker_id,
+          u.name,
+          u.email,
+          u.status,
+          u.avatar,
+          pw.assigned_at
         FROM project_workers pw
         JOIN workers w ON pw.worker_id = w.id
         JOIN users u ON w.user_id = u.id
         WHERE pw.project_id = ?
         `,
-        [p.id],
+        [p.id]
       );
 
-      p.workers = workers;
-      p.worker_count = workers.length;
+      p.workers = workers.map((w) => ({
+        worker_id: w.worker_id,
+        name: w.name,
+        email: w.email,
+        status: w.status,
+        assigned_at: w.assigned_at,
+        avatar: w.avatar
+          ? `${baseUrl}/uploads/avatars/${w.avatar}`
+          : null,
+      }));
 
-      // thumbnail
+      p.worker_count = p.workers.length;
+
+      // ✅ progress fix
+      p.project_progress = Number(p.project_progress) || 0;
+
+      // ✅ thumbnail
       p.thumbnail = `${baseUrl}/uploads/projects/${p.thumbnail}`;
 
       finalData.push(p);
@@ -285,6 +338,7 @@ const getMyProjectsController = async (req, res) => {
       message: "My projects fetched successfully",
       data: finalData,
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({
