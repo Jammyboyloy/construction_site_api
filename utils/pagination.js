@@ -19,30 +19,54 @@ const getAllWithPagination = async ({
   per_page = parseInt(per_page);
   const offset = (page - 1) * per_page;
 
-  // ✅ map frontend → real column (IMPORTANT)
+  // ✅ sort
   sortBy = sortMap[sortBy] || sortMap["id"];
 
   const allowedDir = ["asc", "desc"];
   if (!allowedDir.includes(sortDir)) sortDir = "desc";
 
-  const searchQuery = `%${search}%`;
-
   let where = "";
   let params = [];
 
-  if (search && searchFields.length > 0) {
-    const conditions = searchFields.map(f => `${f} LIKE ?`).join(" OR ");
-    where = `WHERE ${conditions}`;
-    params = searchFields.map(() => searchQuery);
+  // 🔥 FINAL SEARCH LOGIC (CLEAN)
+  if (search) {
+    let conditions = [];
+
+    // ✅ ISO or DATE → search by DAY (BEST WAY)
+    if (search.includes("T") || /^\d{4}-\d{2}-\d{2}/.test(search)) {
+      const date = new Date(search);
+      const day = date.toISOString().slice(0, 10);
+
+      conditions.push(`DATE(dr.created_at) = ?`);
+      params.push(day);
+    }
+
+    // ✅ TEXT SEARCH
+    else {
+      const likeQuery = `%${search}%`;
+
+      searchFields.forEach(f => {
+        conditions.push(`${f} LIKE ?`);
+        params.push(likeQuery);
+      });
+    }
+
+    const conditionStr = conditions.join(" OR ");
+
+    if (baseQuery.toLowerCase().includes("where")) {
+      where = `AND (${conditionStr})`;
+    } else {
+      where = `WHERE ${conditionStr}`;
+    }
   }
 
-  // 🔥 total
+  // ✅ total
   const [[{ total }]] = await db.query(
     `${countQuery} ${where}`,
     params
   );
 
-  // 🔥 data
+  // ✅ data
   const [rows] = await db.query(
     `${baseQuery} ${where} ORDER BY ${sortBy} ${sortDir} LIMIT ? OFFSET ?`,
     [...params, per_page, offset]

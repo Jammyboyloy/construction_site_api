@@ -11,6 +11,7 @@ const {
   getAllClients,
   createProjectController,
   updateProjectThumbnail,
+  deleteProjectController,
   resetProjectThumbnail,
   getAllProjectsController,
   updateProjectController,
@@ -73,6 +74,13 @@ router.post(
   verifyToken,
   checkRole("admin"),
   createProjectController,
+);
+
+router.delete(
+  "/project/:id",
+  verifyToken,
+  checkRole("admin"),
+  deleteProjectController,
 );
 
 router.put(

@@ -443,7 +443,7 @@ const getAssignedTasks = async (req, res) => {
 const getTaskReportsController = async (req, res) => {
   try {
     const userId = req.user.id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     // ✅ get supervisor
     const [[sup]] = await db.query(
@@ -757,12 +757,12 @@ const createDailyReportController = async (req, res) => {
 const getDailyReportsController = async (req, res) => {
   try {
     const projectId = req.params.project_id;
-    const baseUrl = "https://construction-site-api-3uii.onrender.com";
+    const baseUrl = "http://localhost:3000";
 
     const resultData = await getAllWithPagination({
       baseQuery: `
-        SELECT 
-          dr.*, 
+        SELECT
+          dr.*,
           u.name AS supervisor_name
         FROM daily_reports dr
         JOIN supervisors s ON dr.supervisor_id = s.id
@@ -773,10 +773,15 @@ const getDailyReportsController = async (req, res) => {
       countQuery: `
         SELECT COUNT(*) as total
         FROM daily_reports dr
+        JOIN supervisors s ON dr.supervisor_id = s.id
+        JOIN users u ON s.user_id = u.id
         WHERE dr.project_id = ${projectId}
       `,
 
-      searchFields: ["u.name", "dr.summary"],
+      searchFields: [
+        "u.name",
+        "dr.summary"
+      ],
 
       sortMap: {
         id: "dr.id",
@@ -792,7 +797,6 @@ const getDailyReportsController = async (req, res) => {
     const finalResult = [];
 
     for (let r of reports) {
-      // ✅ images
       const [images] = await db.query(
         `
         SELECT tr.image
@@ -802,34 +806,26 @@ const getDailyReportsController = async (req, res) => {
         AND DATE(tr.created_at) = ?
         AND tr.status = 'approved'
         `,
-        [projectId, r.report_date],
+        [projectId, r.report_date]
       );
 
-      // ✅ materials
       const [materials] = await db.query(
         `
-        SELECT
-          m.name,
-          dm.used_quantity,
-          dm.note
+        SELECT m.name, dm.used_quantity, dm.note
         FROM daily_materials dm
         JOIN materials m ON dm.material_id = m.id
         WHERE dm.daily_report_id = ?
         `,
-        [r.id],
+        [r.id]
       );
 
-      // ✅ expenses
       const [expenses] = await db.query(
         `
-        SELECT
-          type,
-          amount,
-          description
+        SELECT type, amount, description
         FROM expenses
         WHERE daily_report_id = ?
         `,
-        [r.id],
+        [r.id]
       );
 
       finalResult.push({
@@ -839,14 +835,11 @@ const getDailyReportsController = async (req, res) => {
         report_date: r.report_date,
         summary: r.summary,
         progress: r.progress,
-
-        images: images.map((img) =>
-          img.image ? `${baseUrl}/uploads/reports/${img.image}` : null,
+        images: images.map(img =>
+          img.image ? `${baseUrl}/uploads/reports/${img.image}` : null
         ),
-
         materials,
         expenses,
-
         created_at: r.created_at,
       });
     }
@@ -857,8 +850,9 @@ const getDailyReportsController = async (req, res) => {
       data: finalResult,
       pagination: resultData.pagination,
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("GET DAILY REPORT ERROR:", err);
     res.status(500).json({
       result: false,
       message: "Error fetching reports",
@@ -911,7 +905,7 @@ const getProjectWorkersController = async (req, res) => {
       total: result.data.length,
       data: result.data.map(u => ({
         ...u,
-        avatar: `https://construction-site-api-3uii.onrender.com/uploads/avatars/${u.avatar}`
+        avatar: `http://localhost:3000/uploads/avatars/${u.avatar}`
       })),
       pagination: result.pagination
     });
